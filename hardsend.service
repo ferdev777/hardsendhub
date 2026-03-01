@@ -1,0 +1,40 @@
+[Unit]
+Description=Hardsend Server Edition - Email Dispatch System
+Documentation=https://devrow.com
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hardsend
+Group=hardsend
+WorkingDirectory=/opt/hardsend
+ExecStart=/opt/hardsend/hardsend
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Environment
+Environment=PORT=8080
+Environment=DB_PATH=/opt/hardsend/hardsend_metrics.db
+Environment=TEMP_DIR=/opt/hardsend/tmp
+Environment=AWS_REGION=us-east-1
+Environment=SES_FROM_ADDRESS=noreply@devrow.com
+Environment=WORKER_COUNT=50
+Environment=JWT_SECRET=hardsend-production-secret-change-me
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/hardsend
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hardsend
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,265 @@
+import React, { useCallback, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { useAuth } from '../context/AuthContext'
+import {
+    Upload,
+    FileText,
+    FileArchive,
+    Database,
+    CheckCircle2,
+    XCircle,
+    Loader2,
+} from 'lucide-react'
+
+function Dropzone({ onUploadComplete }) {
+    const { token } = useAuth()
+    const [uploading, setUploading] = useState(false)
+    const [uploadResult, setUploadResult] = useState(null)
+    const [selectedFiles, setSelectedFiles] = useState([])
+    const [txtFile, setTxtFile] = useState(null)
+
+    const onDrop = useCallback((acceptedFiles) => {
+        const txtFiles = acceptedFiles.filter(f =>
+            f.name.toLowerCase().endsWith('.txt')
+        )
+        const otherFiles = acceptedFiles.filter(f =>
+            !f.name.toLowerCase().endsWith('.txt')
+        )
+
+        if (txtFiles.length > 0) {
+            setTxtFile(txtFiles[0])
+        }
+        if (otherFiles.length > 0) {
+            setSelectedFiles(prev => [...prev, ...otherFiles])
+        }
+    }, [])
+
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
+        onDrop,
+        accept: {
+            'application/pdf': ['.pdf'],
+            'application/zip': ['.zip'],
+            'application/x-zip-compressed': ['.zip'],
+            'text/plain': ['.txt'],
+        },
+        multiple: true,
+        disabled: uploading,
+    })
+
+    const removeFile = (index) => {
+        setSelectedFiles(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const removeTxtFile = () => {
+        setTxtFile(null)
+    }
+
+    const handleUpload = async () => {
+        if (!txtFile && selectedFiles.length === 0) return
+
+        setUploading(true)
+        setUploadResult(null)
+
+        try {
+            const formData = new FormData()
+
+            if (txtFile) {
+                formData.append('txt_file', txtFile)
+            }
+
+            selectedFiles.forEach(file => {
+                formData.append('files', file)
+            })
+
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+                body: formData,
+            })
+
+            const data = await res.json()
+
+            if (res.ok) {
+                setUploadResult({ success: true, message: data.message, jobId: data.job_id })
+                setSelectedFiles([])
+                setTxtFile(null)
+                if (onUploadComplete) onUploadComplete(data)
+            } else {
+                setUploadResult({ success: false, message: data.error || 'Error al subir archivos' })
+            }
+        } catch (err) {
+            setUploadResult({ success: false, message: 'Error de conexión al servidor' })
+        } finally {
+            setUploading(false)
+        }
+    }
+
+    const getFileIcon = (filename) => {
+        const lower = filename.toLowerCase()
+        if (lower.endsWith('.zip') || lower.endsWith('.rar')) return FileArchive
+        if (lower.endsWith('.txt')) return Database
+        return FileText
+    }
+
+    const formatFileSize = (bytes) => {
+        if (bytes < 1024) return `${bytes} B`
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    }
+
+    const totalFiles = selectedFiles.length + (txtFile ? 1 : 0)
+
+    return (
+        <div className="glass-card p-6 animate-slide-up" style={{ animationDelay: '300ms' }}>
+            <div className="flex items-center gap-3 mb-5">
+                <div className="p-2 rounded-lg bg-hardsend-500/20">
+                    <Upload className="w-5 h-5 text-hardsend-400" />
+                </div>
+                <div>
+                    <h3 className="text-white font-semibold text-sm">Zona de Carga</h3>
+                    <p className="text-surface-500 text-xs">
+                        Arrastra archivos TXT, ZIP o PDF
+                    </p>
+                </div>
+            </div>
+
+            {/* Dropzone Area */}
+            <div
+                {...getRootProps()}
+                className={`dropzone ${isDragActive ? 'dropzone-active' : ''} ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+                <input {...getInputProps()} id="file-dropzone" />
+                <div className="text-center">
+                    <Upload className={`w-10 h-10 mx-auto mb-3 ${isDragActive ? 'text-hardsend-400' : 'text-surface-500'}`} />
+                    {isDragActive ? (
+                        <p className="text-hardsend-300 font-medium">Suelta los archivos aquí...</p>
+                    ) : (
+                        <>
+                            <p className="text-surface-300 font-medium mb-1">
+                                Arrastra y suelta archivos aquí
+                            </p>
+                            <p className="text-surface-500 text-sm">
+                                o haz clic para seleccionar
+                            </p>
+                            <div className="flex items-center justify-center gap-4 mt-4 text-xs text-surface-500">
+                                <span className="flex items-center gap-1">
+                                    <Database className="w-3.5 h-3.5" /> TXT (Base de datos)
+                                </span>
+                                <span className="flex items-center gap-1">
+                                    <FileArchive className="w-3.5 h-3.5" /> ZIP
+                                </span>
+                                <span className="flex items-center gap-1">
+                                    <FileText className="w-3.5 h-3.5" /> PDF
+                                </span>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {/* Selected Files List */}
+            {totalFiles > 0 && (
+                <div className="mt-4 space-y-2">
+                    <p className="text-surface-400 text-xs font-medium uppercase tracking-wider">
+                        {totalFiles} archivo{totalFiles !== 1 ? 's' : ''} seleccionado{totalFiles !== 1 ? 's' : ''}
+                    </p>
+
+                    {/* TXT File */}
+                    {txtFile && (
+                        <div className="flex items-center justify-between p-3 rounded-lg bg-success/5 border border-success/20">
+                            <div className="flex items-center gap-3">
+                                <Database className="w-4 h-4 text-success" />
+                                <div>
+                                    <p className="text-white text-sm font-medium">{txtFile.name}</p>
+                                    <p className="text-surface-500 text-xs">{formatFileSize(txtFile.size)} — Base de datos de clientes</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); removeTxtFile(); }}
+                                className="p-1 rounded-lg hover:bg-danger/20 transition-colors"
+                            >
+                                <XCircle className="w-4 h-4 text-surface-500 hover:text-danger-light" />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Other Files */}
+                    <div className="max-h-40 overflow-y-auto space-y-1">
+                        {selectedFiles.map((file, index) => {
+                            const Icon = getFileIcon(file.name)
+                            return (
+                                <div
+                                    key={`${file.name}-${index}`}
+                                    className="flex items-center justify-between p-2.5 rounded-lg bg-surface-800/30 hover:bg-surface-800/50 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <Icon className="w-4 h-4 text-hardsend-400 flex-shrink-0" />
+                                        <div className="min-w-0">
+                                            <p className="text-surface-200 text-sm truncate">{file.name}</p>
+                                            <p className="text-surface-500 text-xs">{formatFileSize(file.size)}</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); removeFile(index); }}
+                                        className="p-1 rounded-lg hover:bg-danger/20 transition-colors flex-shrink-0"
+                                    >
+                                        <XCircle className="w-4 h-4 text-surface-500 hover:text-danger-light" />
+                                    </button>
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    {/* Upload Button */}
+                    <button
+                        onClick={handleUpload}
+                        disabled={uploading}
+                        className="btn-primary w-full flex items-center justify-center gap-2 mt-3"
+                    >
+                        {uploading ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                Subiendo archivos...
+                            </>
+                        ) : (
+                            <>
+                                <Upload className="w-5 h-5" />
+                                Iniciar Procesamiento
+                            </>
+                        )}
+                    </button>
+                </div>
+            )}
+
+            {/* Upload Result */}
+            {uploadResult && (
+                <div className={`mt-4 p-4 rounded-lg border animate-slide-down ${uploadResult.success
+                        ? 'bg-success/10 border-success/30'
+                        : 'bg-danger/10 border-danger/30'
+                    }`}>
+                    <div className="flex items-center gap-3">
+                        {uploadResult.success ? (
+                            <CheckCircle2 className="w-5 h-5 text-success flex-shrink-0" />
+                        ) : (
+                            <XCircle className="w-5 h-5 text-danger-light flex-shrink-0" />
+                        )}
+                        <div>
+                            <p className={`text-sm font-medium ${uploadResult.success ? 'text-success' : 'text-danger-light'}`}>
+                                {uploadResult.message}
+                            </p>
+                            {uploadResult.jobId && (
+                                <p className="text-surface-500 text-xs font-mono mt-1">
+                                    Job ID: {uploadResult.jobId}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+export default Dropzone

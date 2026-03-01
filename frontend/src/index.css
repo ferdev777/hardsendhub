@@ -1,0 +1,283 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Global Styles ===== */
+:root {
+  --gradient-primary: linear-gradient(135deg, #4263eb 0%, #5c7cfa 50%, #748ffc 100%);
+  --gradient-dark: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+  --gradient-success: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  --gradient-danger: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  --gradient-warning: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  --shadow-glow: 0 0 20px rgba(92, 124, 250, 0.15);
+  --shadow-glow-sm: 0 0 10px rgba(92, 124, 250, 0.1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: #020617;
+  color: #e2e8f0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== Scrollbar Styling ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ===== Glass Card ===== */
+@layer components {
+  .glass-card {
+    @apply bg-surface-900/60 backdrop-blur-md border border-surface-700/50 rounded-2xl;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-300;
+  }
+
+  .glass-card-hover:hover {
+    @apply border-hardsend-500/30;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(92, 124, 250, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transform: translateY(-1px);
+  }
+
+  .stat-card {
+    @apply glass-card p-6 relative overflow-hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 9999px 9999px 0 0;
+  }
+
+  .stat-card-blue::before {
+    background: var(--gradient-primary);
+  }
+
+  .stat-card-green::before {
+    background: var(--gradient-success);
+  }
+
+  .stat-card-red::before {
+    background: var(--gradient-danger);
+  }
+
+  .stat-card-yellow::before {
+    background: var(--gradient-warning);
+  }
+
+  .btn-primary {
+    @apply px-6 py-3 bg-hardsend-600 hover:bg-hardsend-500 text-white font-semibold rounded-xl
+           transition-all duration-200 active:scale-95 shadow-lg;
+    box-shadow: 0 4px 14px rgba(66, 99, 235, 0.4);
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(66, 99, 235, 0.5);
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-danger/20 hover:bg-danger/30 text-danger-light font-medium rounded-lg
+           border border-danger/30 transition-all duration-200 active:scale-95;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-surface-800/80 border border-surface-600/50 rounded-xl
+           text-surface-100 placeholder-surface-500 focus:outline-none focus:border-hardsend-500
+           focus:ring-2 focus:ring-hardsend-500/20 transition-all duration-200;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-success/20 text-success-light border border-success/30;
+  }
+
+  .badge-danger {
+    @apply badge bg-danger/20 text-danger-light border border-danger/30;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning/20 text-warning-light border border-warning/30;
+  }
+
+  .badge-processing {
+    @apply badge bg-hardsend-500/20 text-hardsend-300 border border-hardsend-500/30;
+  }
+}
+
+/* ===== Animated Background ===== */
+.animated-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.animated-bg::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 20% 50%, rgba(66, 99, 235, 0.08) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, rgba(92, 124, 250, 0.05) 0%, transparent 40%),
+              radial-gradient(circle at 40% 80%, rgba(16, 185, 129, 0.04) 0%, transparent 40%);
+  animation: bgFloat 20s ease-in-out infinite;
+}
+
+@keyframes bgFloat {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-2%, 2%) rotate(0.5deg); }
+  50% { transform: translate(1%, -1%) rotate(-0.5deg); }
+  75% { transform: translate(-1%, -2%) rotate(0.25deg); }
+}
+
+/* ===== Login Page ===== */
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  position: relative;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  animation: scaleIn 0.5s ease-out;
+}
+
+/* ===== Progress Bar Animation ===== */
+.progress-bar-fill {
+  transition: width 0.5s ease-in-out;
+  background: var(--gradient-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ===== Dropzone ===== */
+.dropzone {
+  @apply relative border-2 border-dashed border-surface-600/50 rounded-2xl p-10
+         transition-all duration-300 cursor-pointer;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.dropzone:hover {
+  @apply border-hardsend-500/60;
+  background: rgba(66, 99, 235, 0.05);
+}
+
+.dropzone-active {
+  @apply border-hardsend-400 bg-hardsend-500/10;
+  box-shadow: 0 0 30px rgba(92, 124, 250, 0.15);
+}
+
+/* ===== Table ===== */
+.error-table {
+  @apply w-full text-sm;
+}
+
+.error-table thead {
+  @apply sticky top-0;
+}
+
+.error-table th {
+  @apply px-4 py-3 text-left text-xs font-semibold text-surface-400 uppercase tracking-wider
+         bg-surface-900/90 backdrop-blur-sm border-b border-surface-700/50;
+}
+
+.error-table td {
+  @apply px-4 py-3 border-b border-surface-800/50 text-surface-300;
+}
+
+.error-table tbody tr {
+  @apply transition-colors duration-150;
+}
+
+.error-table tbody tr:hover {
+  @apply bg-surface-800/30;
+}
+
+/* ===== Pulse Dot ===== */
+.pulse-dot {
+  @apply w-2.5 h-2.5 rounded-full;
+  animation: pulseDot 2s ease-in-out infinite;
+}
+
+.pulse-dot-green {
+  @apply bg-success;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.pulse-dot-red {
+  @apply bg-danger;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+.pulse-dot-yellow {
+  @apply bg-warning;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
