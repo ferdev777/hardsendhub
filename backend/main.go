@@ -14,8 +14,8 @@ import (
 	"hardsend/auth"
 	"hardsend/config"
 	"hardsend/database"
+	"hardsend/email"
 	"hardsend/handlers"
-	"hardsend/ses"
 	"hardsend/websocket"
 	"hardsend/workers"
 )
@@ -42,13 +42,13 @@ func main() {
 		log.Fatalf("Failed to create temp directory: %v", err)
 	}
 
-	// Initialize SES client
-	sesClient, err := ses.NewClient(cfg.AWSRegion, cfg.SESFromAddress, cfg.SESRateLimit)
+	// Initialize Resend email client
+	emailClient, err := email.NewClient(cfg.ResendAPIKey, cfg.ResendFrom, cfg.ResendRateLimit)
 	if err != nil {
-		log.Printf("[WARNING] Failed to initialize SES client: %v", err)
-		log.Println("[WARNING] Email sending will fail. Ensure AWS credentials are configured.")
-		// Continue running - the worker pool will handle SES errors via circuit breaker
-		sesClient = nil
+		log.Printf("[WARNING] Failed to initialize email client: %v", err)
+		log.Println("[WARNING] Email sending will fail. Ensure RESEND_API_KEY is configured.")
+		// Continue running - the worker pool will handle errors via circuit breaker
+		emailClient = nil
 	}
 
 	// Initialize WebSocket hub
@@ -56,7 +56,7 @@ func main() {
 	go hub.Run()
 
 	// Initialize worker pool
-	pool := workers.NewPool(cfg, db, sesClient, hub)
+	pool := workers.NewPool(cfg, db, emailClient, hub)
 	pool.Start()
 
 	// Start temp file cleaner (removes processed PDFs older than 20 days, checks every 24 hours)
@@ -67,6 +67,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(cfg)
 	uploadHandler := handlers.NewUploadHandler(db, pool, cfg.TempDir)
 	jobsHandler := handlers.NewJobsHandler(db)
+	webhookHandler := handlers.NewWebhookHandler(db, hub)
 
 	// Set up router
 	r := chi.NewRouter()
@@ -86,6 +87,7 @@ func main() {
 
 	// Public routes
 	r.Post("/api/login", authHandler.Login)
+	r.Post("/api/webhooks/resend", webhookHandler.ResendWebhook)
 
 	// WebSocket route (auth via query param)
 	r.Get("/ws/metrics", hub.HandleWebSocket)

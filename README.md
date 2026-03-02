@@ -1,10 +1,8 @@
 # Hardsend - Server Edition
 
-> © 2026 Fernando Hirschfeld & Devrow. All rights reserved. Closed Source.
-
 ## 🚀 Overview
 
-Hardsend es un sistema enterprise de despacho masivo de facturas electrónicas por email. Procesa archivos ZIP/RAR/PDF con facturas, los cruza contra una base de clientes (TXT), y los envía vía AWS SES con monitoreo en tiempo real y registro histórico.
+Hardsend es un sistema enterprise de despacho masivo de facturas electrónicas por email. Procesa archivos ZIP/RAR/PDF con facturas, los cruza contra una base de clientes (TXT), y los envía vía Resend con monitoreo en tiempo real, registro histórico y seguimiento de compromiso (aperturas, rebotes, quejas).
 
 ## 🏗️ Arquitectura
 
@@ -22,23 +20,23 @@ Hardsend es un sistema enterprise de despacho masivo de facturas electrónicas p
 └───────┬──────────────────┬──────────────────┬───────────────┘
         │                  │                  │
    ┌────┴────┐      ┌─────┴─────┐     ┌─────┴─────┐
-   │ SQLite  │      │  AWS SES  │     │ Filesystem│
+   │ SQLite  │      │  Resend   │     │ Filesystem│
    │  (WAL)  │      │  (email)  │     │  (tmp/)   │
    └─────────┘      └───────────┘     └───────────┘
 ```
 
 - **Backend**: Go 1.21+ con Chi router, Gorilla WebSockets, SQLite3 (pure Go)
 - **Frontend**: React 18 + Vite + TailwindCSS + Recharts + Lucide
-- **Email**: AWS SES con rate limiting (14/s) y circuit breaker
-- **Database**: SQLite3 con WAL mode (modernc.org/sqlite, sin CGO)
+- **Email**: Resend con rate limiting (14/s), circuit breaker y engagement tracking (webhooks)
+- **Database**: SQLite3 con WAL mode y tracking de aperturas
 
 ## 📋 Requisitos
 
 - Go 1.21+
 - Node.js 18+
 - npm 9+
-- Cuenta AWS con SES configurado
-- AWS CLI configurado con credenciales
+- Cuenta Resend con API Key
+- Dominio verificado en Resend
 
 ## 🛠️ Setup de Desarrollo
 
@@ -47,7 +45,7 @@ Hardsend es un sistema enterprise de despacho masivo de facturas electrónicas p
 ```bash
 cd backend
 cp .env.example .env
-# Editar .env con tus credenciales AWS reales
+# Editar .env con tu RESEND_API_KEY real
 ```
 
 ### 2. Compilar y ejecutar
@@ -82,7 +80,7 @@ Solo se necesitan estos archivos para correr en otra PC:
 📦 hardsend/
 ├── hardsend.exe          ← Binario Go compilado (todo incluido)
 ├── static/               ← Frontend React compilado
-└── .env                  ← Credenciales AWS y configuración
+└── .env                  ← Credenciales Resend y configuración
 ```
 
 La PC destino **NO necesita** Go, Node.js, ni ninguna dependencia.
@@ -103,14 +101,13 @@ Ver `backend/.env.example` para referencia completa.
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `PORT` | `8080` | Puerto HTTP |
-| `AWS_ACCESS_KEY_ID` | — | Clave de acceso AWS |
-| `AWS_SECRET_ACCESS_KEY` | — | Clave secreta AWS |
-| `AWS_REGION` | `us-east-1` | Región AWS para SES |
-| `SES_FROM_ADDRESS` | `facturas@videodigital.com.ar` | Email remitente (verificado en SES) |
+| `RESEND_API_KEY` | — | API Key de Resend |
+| `RESEND_FROM` | `facturas@videodigital.com.ar` | Email remitente verificado |
+| `RESEND_RATE_LIMIT` | `14` | Emails por segundo |
 | `WORKER_COUNT` | `50` | Goroutines de envío simultáneo |
 | `MAX_RETRIES` | `3` | Reintentos por factura fallida |
 | `RETRY_DELAY` | `60s` | Espera entre reintentos |
-| `SES_RATE_LIMIT` | `14` | Emails por segundo (límite SES sandbox) |
+| `RESEND_RATE_LIMIT` | `14` | Límite de envíos por segundo |
 | `CB_FAILURE_THRESHOLD` | `5` | Umbral del circuit breaker |
 | `CB_RECOVERY_TIMEOUT` | `300s` | Tiempo de recuperación del circuit breaker |
 
@@ -158,16 +155,18 @@ Los PDFs generados por el sistema de facturación usan este formato:
 |-------|-------|
 | **Asunto** | `FACTURA MENSUAL VIDEO DIGITAL S.R.L` |
 | **Remitente** | `Video Digital S.R.L <facturas@videodigital.com.ar>` |
-| **Cuerpo** | HTML profesional con fondo oscuro, saludo personalizado, fecha de vencimiento, datos de contacto |
+| **Cuerpo** | HTML profesional con fondo oscuro, saludo personalizado, fecha de vencimiento (30 días), datos de contacto |
 | **Adjunto** | PDF de la factura |
+| **Tracking** | Seguimiento de Aperturas, Rebotes y Quejas vía Webhooks |
 | **Formato MIME** | `multipart/mixed` con `multipart/alternative` (text/plain + text/html) |
 
 ## 📊 Funcionalidades
 
 ### Panel de Control (Dashboard)
 - **Zona de carga**: Drag & drop de archivos TXT + ZIP/RAR/PDF
-- **Métricas en tiempo real**: Facturas procesadas, exitosas, errores (via WebSocket)
-- **Gráfico en vivo**: Recharts con datos del último minuto
+- **Métricas en tiempo real**: Facturas procesadas, exitosas, errores, aperturas (via WebSocket)
+- **Gráfico en vivo**: Recharts con datos de éxito y compromiso (aperturas)
+- **Engagement Row**: Tarjetas específicas para Aperturas, Rebotes y Spam
 - **Barra de progreso**: Porcentaje de avance del batch
 - **Tabla de errores**: Detalle de facturas con errores de validación o red
 
@@ -190,19 +189,23 @@ Los PDFs generados por el sistema de facturación usan este formato:
 - Nombre de archivo PDF inválido
 
 ### ERROR_NETWORK (Reintento x3, 60s entre intentos)
-- Timeouts de AWS SES
-- Rate limiting de AWS
+- Timeouts de Resend
+- Rate limiting de Resend
 - Problemas de conexión
 
 ### Circuit Breaker
 - Se **abre** después de 5 fallos consecutivos de SES
 - **Pausa todos los workers** por 5 minutos
-- Previene blacklisting de AWS
+- Previene blacklisting de Resend
 - Transiciona a **half-open** para probar recuperación
 
 ### Idempotencia
 - Una factura con el mismo número no se envía dos veces en el mismo mes
 - Se marca como "ya enviada" sin generar error
+
+### Webhooks de Resend
+- El sistema expone `/api/webhooks/resend` para recibir eventos.
+- Se deben configurar en el dashboard de Resend con los eventos: `email.opened`, `email.bounced`, `email.complained`.
 
 ## 🗑️ Limpieza Automática
 
@@ -222,17 +225,18 @@ go test ./parser/ ./workers/ -v
 |---------|-------|-----------|
 | `parser` | 7 tests | ExtractInvoiceNumber, ValidateEmail, ClientName, TypeX, ParseTXT, ValidateAndBuild |
 | `workers` | 4 tests | CircuitBreaker: initial, threshold, reset, halfOpen |
+| `webhooks` | — | Tracking de eventos por Tag (invoice_id) |
 
-## ⚠️ SES Sandbox vs Producción
+## ⚠️ Resend Sandbox vs Producción
 
-La cuenta SES puede estar en **modo Sandbox**:
-- Solo envía a emails **verificados manualmente** en la consola AWS
-- Para enviar a todos los clientes → [solicitar acceso a producción](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html)
+Si la cuenta está en **Sandbox**:
+- Solo envía a emails **verificados manualmente**.
+- Para enviar a todos los clientes → [solicitar acceso a producción](https://resend.com/docs/dashboard/emails/sending-limit).
 
-## � Seguridad
+## 🔐 Seguridad
 
 - Autenticación JWT con expiración de 24 horas
-- Credenciales AWS en `.env` (excluido de Git via `.gitignore`)
+- Credenciales Resend en `.env` (excluido de Git via `.gitignore`)
 - Archivo `.env.example` con placeholders para referencia
 - CORS configurado para desarrollo y producción
 
@@ -259,10 +263,13 @@ hardsend/
 │   ├── parser/
 │   │   ├── txt_parser.go         # Parser TXT + extracción de datos
 │   │   └── txt_parser_test.go    # Tests unitarios
-│   ├── ses/
-│   │   └── client.go             # AWS SES + template HTML del email
+│   ├── email/
+│   │   └── client.go             # Resend client + template HTML + fecha 30d
 │   ├── websocket/
 │   │   └── hub.go                # WebSocket hub para métricas en vivo
+│   ├── handlers/
+│   │   ├── webhooks.go           # Handler de webhooks para tracking
+│   │   └── ...                   # Otros handlers (upload, auth, jobs)
 │   ├── workers/
 │   │   ├── pool.go               # Worker pool (goroutines)
 │   │   ├── circuit_breaker.go    # Circuit breaker pattern
@@ -294,8 +301,11 @@ hardsend/
 ## 🔮 Next Steps
 
 - [ ] **Embeber static/ en el .exe** — Usar `go:embed` para distribuir un único archivo ejecutable sin carpeta static/
-- [ ] **Salir de SES Sandbox** — Solicitar acceso a producción en AWS para enviar a cualquier email
-- [ ] **HTTPS** — Configurar con reverse proxy (nginx/caddy) o certificado directo
+- [ ] **Salir de Resend Sandbox** — Solicitar acceso a producción para enviar a cualquier email
+- [ ] **HTTPS** — Configurar con reverse proxy (nginx/caddy)
 - [ ] **Multi-usuario** — Panel de administración con múltiples usuarios y roles
 - [ ] **Notificaciones** — Alertas por email/webhook cuando un batch falla
 - [ ] **Exportar reportes** — Descargar historial como CSV/Excel
+
+---
+Este proyecto es de uso interno exclusivo. Este servidor es un envío automático. Por favor no responda este correo.

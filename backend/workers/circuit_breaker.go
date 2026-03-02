@@ -15,7 +15,7 @@ const (
 	StateHalfOpen CircuitBreakerState = "HALF_OPEN"
 )
 
-// CircuitBreaker implements the circuit breaker pattern for AWS SES.
+// CircuitBreaker implements the circuit breaker pattern for Resend.
 type CircuitBreaker struct {
 	mu               sync.RWMutex
 	state            CircuitBreakerState
@@ -64,7 +64,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	cb.consecutiveFails = 0
 	if cb.state == StateHalfOpen {
 		cb.state = StateClosed
-		log.Println("[CircuitBreaker] Transitioned to CLOSED - SES is healthy")
+		log.Println("[CircuitBreaker] Transitioned to CLOSED - Resend is healthy")
 	}
 }
 
@@ -92,7 +92,7 @@ func (cb *CircuitBreaker) TryTransitionToHalfOpen() bool {
 	if cb.state == StateOpen && time.Since(cb.openedAt) >= cb.recoveryTimeout {
 		cb.state = StateHalfOpen
 		cb.consecutiveFails = 0
-		log.Println("[CircuitBreaker] Transitioned to HALF_OPEN - testing SES connection")
+		log.Println("[CircuitBreaker] Transitioned to HALF_OPEN - testing Resend connection")
 		return true
 	}
 	return false

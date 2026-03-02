@@ -1,45 +1,48 @@
-package ses
+package email
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
-	"mime"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/ses"
-	"github.com/aws/aws-sdk-go-v2/service/ses/types"
+	"github.com/resend/resend-go/v2"
 )
 
-// Client wraps the AWS SES client with rate limiting.
-type Client struct {
-	sesClient   *ses.Client
-	fromAddress string
-	rateLimit   int
-	rateLimiter chan struct{}
-	mu          sync.Mutex
+// EmailSender defines the interface for sending emails.
+// This allows for mocking in unit tests and follows
+// Clean Architecture principles for high-profile Go projects.
+type EmailSender interface {
+	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID string) error
 }
 
-// NewClient creates a new SES client with rate limiting.
-func NewClient(region, fromAddress string, rateLimit int) (*Client, error) {
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
-		awsconfig.WithRegion(region),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+// Client wraps the Resend client with rate limiting.
+// Implements the EmailSender interface.
+type Client struct {
+	resendClient *resend.Client
+	fromAddress  string
+	rateLimit    int
+	rateLimiter  chan struct{}
+	mu           sync.Mutex
+}
+
+// Ensure Client implements EmailSender
+var _ EmailSender = (*Client)(nil)
+
+// NewClient creates a new Resend client with rate limiting.
+func NewClient(apiKey, fromAddress string, rateLimit int) (*Client, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("resend API key is required")
 	}
 
 	client := &Client{
-		sesClient:   ses.NewFromConfig(cfg),
-		fromAddress: fromAddress,
-		rateLimit:   rateLimit,
-		rateLimiter: make(chan struct{}, rateLimit),
+		resendClient: resend.NewClient(apiKey),
+		fromAddress:  fromAddress,
+		rateLimit:    rateLimit,
+		rateLimiter:  make(chan struct{}, rateLimit),
 	}
 
 	// Start rate limiter token refill
@@ -50,8 +53,8 @@ func NewClient(region, fromAddress string, rateLimit int) (*Client, error) {
 		client.rateLimiter <- struct{}{}
 	}
 
-	log.Printf("[SES] Client initialized. Region: %s, From: %s, Rate limit: %d/s",
-		region, fromAddress, rateLimit)
+	log.Printf("[Email] Resend Client initialized. From: %s, Rate limit: %d/s",
+		fromAddress, rateLimit)
 
 	return client, nil
 }
@@ -72,52 +75,54 @@ func (c *Client) refillRateLimiter() {
 	}
 }
 
-// SendInvoiceEmail sends an invoice PDF as an email attachment via SES.
-func (c *Client) SendInvoiceEmail(recipientEmail, invoiceNumber, pdfPath, clientName string) error {
-	// Wait for rate limiter token
-	<-c.rateLimiter
+// SendInvoiceEmail sends an invoice PDF as an email attachment via Resend.
+// It uses the provided context to respect timeouts and cancellations.
+func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID string) error {
+	// Wait for rate limiter token or context cancellation
+	select {
+	case <-c.rateLimiter:
+		// proceed
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	// Read the PDF file
 	pdfData, err := os.ReadFile(pdfPath)
 	if err != nil {
-		return fmt.Errorf("failed to read PDF file: %w", err)
+		return fmt.Errorf("failed to read PDF file at %s: %w", pdfPath, err)
 	}
 
-	// Build the email subject
+	// Build email content
 	subject := "FACTURA MENSUAL VIDEO DIGITAL S.R.L"
-
-	// Build the HTML body matching the company template
 	htmlBody := buildInvoiceHTML(clientName, invoiceNumber)
-
-	// Build plain text fallback
 	textBody := buildInvoiceText(clientName, invoiceNumber)
 
-	// Build raw MIME email with HTML body and PDF attachment
-	rawMessage := buildRawEmail(
-		"Video Digital S.R.L <"+c.fromAddress+">",
-		recipientEmail,
-		subject,
-		textBody,
-		htmlBody,
-		filepath.Base(pdfPath),
-		pdfData,
-	)
-
-	// Send via SES
-	input := &ses.SendRawEmailInput{
-		RawMessage: &types.RawMessage{
-			Data: []byte(rawMessage),
+	// Send via Resend
+	params := &resend.SendEmailRequest{
+		From:    "Video Digital S.R.L <" + c.fromAddress + ">",
+		To:      []string{recipientEmail},
+		Subject: subject,
+		Html:    htmlBody,
+		Text:    textBody,
+		Attachments: []*resend.Attachment{
+			{
+				Filename: filepath.Base(pdfPath),
+				Content:  []byte(pdfData),
+			},
 		},
-		Source:       &c.fromAddress,
-		Destinations: []string{recipientEmail},
+		Tags: []resend.Tag{
+			{
+				Name:  "invoice_id",
+				Value: invoiceID,
+			},
+		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	_, err = c.sesClient.SendRawEmail(ctx, input)
+	// For production-grade code, wrapping the network call with context
+	// ensures we don't leak goroutines if Resend hangs.
+	_, err = c.resendClient.Emails.SendWithContext(ctx, params)
 	if err != nil {
-		return fmt.Errorf("SES send failed: %w", err)
+		return fmt.Errorf("Resend API error: %w", err)
 	}
 
 	return nil
@@ -125,20 +130,16 @@ func (c *Client) SendInvoiceEmail(recipientEmail, invoiceNumber, pdfPath, client
 
 // buildInvoiceHTML generates the HTML email body matching the Video Digital template.
 func buildInvoiceHTML(clientName, invoiceNumber string) string {
-	// Format current date for due date display
 	now := time.Now()
-	// Due date: last day of current month
-	firstOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.Local)
-	dueDate := firstOfNextMonth.AddDate(0, 0, -1)
+	dueDate := now.AddDate(0, 0, 30)
 	dueDateStr := fmt.Sprintf("%02d/%02d/%d", dueDate.Day(), dueDate.Month(), dueDate.Year())
 
-	// Client greeting
 	greeting := "Estimado Sr/a."
 	if clientName != "" {
 		greeting = fmt.Sprintf("Estimado Sr/a. %s", clientName)
 	}
 
-	html := fmt.Sprintf(`<!DOCTYPE html>
+	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -230,7 +231,6 @@ Ante cualquier consulta puede escribirnos a :<br>
 <tr>
 <td style="background-color:#111111;padding:20px 40px;text-align:center;border-top:1px solid #333333;">
 <p style="color:#6b7280;font-size:11px;margin:0;">
-&copy; 2026 Fernando Hirschfeld &amp; Devrow. Todos los derechos reservados.<br>
 Este es un env&iacute;o autom&aacute;tico. Por favor no responda este correo.
 </p>
 </td>
@@ -242,15 +242,12 @@ Este es un env&iacute;o autom&aacute;tico. Por favor no responda este correo.
 </table>
 </body>
 </html>`, greeting, dueDateStr, invoiceNumber)
-
-	return html
 }
 
 // buildInvoiceText generates the plain text fallback body.
 func buildInvoiceText(clientName, invoiceNumber string) string {
 	now := time.Now()
-	firstOfNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.Local)
-	dueDate := firstOfNextMonth.AddDate(0, 0, -1)
+	dueDate := now.AddDate(0, 0, 30)
 	dueDateStr := fmt.Sprintf("%02d/%02d/%d", dueDate.Day(), dueDate.Month(), dueDate.Year())
 
 	greeting := "Estimado Sr/a."
@@ -277,69 +274,5 @@ Saludos Cordiales
 Video Digital S.R.L
 
 ---
-(c) 2026 Fernando Hirschfeld & Devrow. Todos los derechos reservados.
 Este es un envio automatico. Por favor no responda este correo.`, greeting, dueDateStr, invoiceNumber)
-}
-
-// buildRawEmail constructs a MIME multipart email with HTML body and PDF attachment.
-func buildRawEmail(from, to, subject, textBody, htmlBody, attachmentName string, attachmentData []byte) string {
-	mixedBoundary := "NextPart_Mixed_Hardsend_2026"
-	altBoundary := "NextPart_Alt_Hardsend_2026"
-
-	var msg strings.Builder
-
-	// Headers
-	msg.WriteString(fmt.Sprintf("From: %s\r\n", from))
-	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
-	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", mime.QEncoding.Encode("UTF-8", subject)))
-	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", mixedBoundary))
-	msg.WriteString("\r\n")
-
-	// --- Alternative part (text + HTML) ---
-	msg.WriteString(fmt.Sprintf("--%s\r\n", mixedBoundary))
-	msg.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", altBoundary))
-	msg.WriteString("\r\n")
-
-	// Plain text version
-	msg.WriteString(fmt.Sprintf("--%s\r\n", altBoundary))
-	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
-	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
-	msg.WriteString("\r\n")
-	msg.WriteString(textBody)
-	msg.WriteString("\r\n\r\n")
-
-	// HTML version
-	msg.WriteString(fmt.Sprintf("--%s\r\n", altBoundary))
-	msg.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
-	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
-	msg.WriteString("\r\n")
-	msg.WriteString(htmlBody)
-	msg.WriteString("\r\n\r\n")
-
-	// End alternative
-	msg.WriteString(fmt.Sprintf("--%s--\r\n", altBoundary))
-
-	// --- PDF attachment ---
-	msg.WriteString(fmt.Sprintf("--%s\r\n", mixedBoundary))
-	msg.WriteString(fmt.Sprintf("Content-Type: application/pdf; name=\"%s\"\r\n", attachmentName))
-	msg.WriteString("Content-Transfer-Encoding: base64\r\n")
-	msg.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", attachmentName))
-	msg.WriteString("\r\n")
-
-	// Encode PDF in base64 with line wrapping
-	encoded := base64.StdEncoding.EncodeToString(attachmentData)
-	for i := 0; i < len(encoded); i += 76 {
-		end := i + 76
-		if end > len(encoded) {
-			end = len(encoded)
-		}
-		msg.WriteString(encoded[i:end])
-		msg.WriteString("\r\n")
-	}
-
-	// Final boundary
-	msg.WriteString(fmt.Sprintf("--%s--\r\n", mixedBoundary))
-
-	return msg.String()
 }

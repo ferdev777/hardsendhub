@@ -39,6 +39,9 @@ type Invoice struct {
 	ErrorReason    *string    `json:"error_reason"`
 	Attempts       int        `json:"attempts"`
 	LastAttemptAt  *time.Time `json:"last_attempt_at"`
+	Opened         bool       `json:"opened"`
+	Bounced        bool       `json:"bounced"`
+	Complained     bool       `json:"complained"`
 }
 
 // InvoiceJob is passed through worker channels for processing.
@@ -60,6 +63,9 @@ type MetricsUpdate struct {
 	ActiveWorkers        int     `json:"active_workers"`
 	SuccessRate          float64 `json:"success_rate"`
 	CircuitBreakerState  string  `json:"circuit_breaker_state"`
+	OpenedCount          int     `json:"opened_count"`
+	BounceCount          int     `json:"bounce_count"`
+	ComplaintCount       int     `json:"complaint_count"`
 }
 
 // LoginRequest represents the login API payload.
@@ -108,4 +114,13 @@ type HistorySummary struct {
 type HistoryResponse struct {
 	Summary *HistorySummary `json:"summary"`
 	Jobs    []JobHistory    `json:"jobs"`
+}
+
+// ActivityEvent represents an engagement event for the live feed.
+type ActivityEvent struct {
+	Type          string    `json:"type"`       // "activity_event"
+	EventType     string    `json:"event_type"` // "email.opened", etc.
+	InvoiceNumber string    `json:"invoice_number"`
+	Recipient     string    `json:"recipient"`
+	CreatedAt     time.Time `json:"created_at"`
 }

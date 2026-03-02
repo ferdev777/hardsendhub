@@ -102,8 +102,8 @@ function History({ onBack }) {
                                     key={p.key}
                                     onClick={() => setPeriod(p.key)}
                                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${period === p.key
-                                            ? 'bg-hardsend-500 text-white shadow-lg shadow-hardsend-500/25'
-                                            : 'text-surface-400 hover:text-white hover:bg-surface-700/50'
+                                        ? 'bg-hardsend-500 text-white shadow-lg shadow-hardsend-500/25'
+                                        : 'text-surface-400 hover:text-white hover:bg-surface-700/50'
                                         }`}
                                     id={`filter-${p.key}`}
                                 >
@@ -190,10 +190,10 @@ function History({ onBack }) {
                                                     </td>
                                                     <td className="py-3 px-5 text-center">
                                                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${job.status === 'COMPLETED'
-                                                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                                                : job.status === 'PROCESSING'
-                                                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                                                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                                            : job.status === 'PROCESSING'
+                                                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
                                                             }`}>
                                                             {job.status === 'COMPLETED' ? 'Completado' :
                                                                 job.status === 'PROCESSING' ? 'Procesando' : 'Error'}

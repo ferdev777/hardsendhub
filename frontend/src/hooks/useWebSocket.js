@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 export function useWebSocket(token) {
     const [metrics, setMetrics] = useState(null)
+    const [events, setEvents] = useState([])
     const [connected, setConnected] = useState(false)
     const wsRef = useRef(null)
     const reconnectTimeoutRef = useRef(null)
@@ -29,7 +30,17 @@ export function useWebSocket(token) {
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data)
-                    setMetrics(data)
+
+                    // Handle metrics update
+                    if (data.processed_count !== undefined) {
+                        setMetrics(data)
+                    }
+
+                    // Handle individual activity event if present in the message
+                    // (Assuming the backend might send event-type messages now)
+                    if (data.type === 'activity_event' || data.event_type) {
+                        setEvents(prev => [data, ...prev].slice(0, 50))
+                    }
                 } catch (err) {
                     console.error('[WebSocket] Failed to parse message:', err)
                 }
@@ -70,5 +81,5 @@ export function useWebSocket(token) {
         }
     }, [connect])
 
-    return { metrics, connected }
+    return { metrics, events, connected }
 }

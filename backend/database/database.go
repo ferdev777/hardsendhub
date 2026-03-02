@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -64,6 +65,24 @@ func (db *DB) migrate() error {
 	for _, m := range migrations {
 		if _, err := db.conn.Exec(m); err != nil {
 			return fmt.Errorf("migration failed: %s: %w", m, err)
+		}
+	}
+
+	// Add engagement columns if they don't exist (SQLite doesn't support IF NOT EXISTS in ALTER TABLE)
+	alterations := []string{
+		"ALTER TABLE invoices ADD COLUMN opened INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE invoices ADD COLUMN bounced INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE invoices ADD COLUMN complained INTEGER NOT NULL DEFAULT 0",
+	}
+
+	for _, m := range alterations {
+		_, err := db.conn.Exec(m)
+		if err != nil {
+			// Check if it's a "duplicate column name" error and ignore it
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("alteration failed: %s: %w", m, err)
 		}
 	}
 
@@ -256,11 +275,49 @@ func (db *DB) GetJobMetrics(jobID string) (*models.MetricsUpdate, error) {
 		}
 	}
 
+	// Get engagement metrics (opened, bounced, complained are counts across all success emails)
+	_ = db.conn.QueryRow("SELECT COUNT(*) FROM invoices WHERE job_id = ? AND opened = 1", jobID).Scan(&metrics.OpenedCount)
+	_ = db.conn.QueryRow("SELECT COUNT(*) FROM invoices WHERE job_id = ? AND bounced = 1", jobID).Scan(&metrics.BounceCount)
+	_ = db.conn.QueryRow("SELECT COUNT(*) FROM invoices WHERE job_id = ? AND complained = 1", jobID).Scan(&metrics.ComplaintCount)
+
 	if metrics.ProcessedCount > 0 {
 		metrics.SuccessRate = float64(metrics.SuccessCount) / float64(metrics.ProcessedCount) * 100
 	}
 
 	return metrics, nil
+}
+
+// --- Engagement Operations ---
+
+// UpdateEngagementStatus marks an invoice as opened, bounced, or complained.
+func (db *DB) UpdateEngagementStatus(invoiceID, eventType string) error {
+	column := ""
+	switch eventType {
+	case "email.opened":
+		column = "opened"
+	case "email.bounced":
+		column = "bounced"
+	case "email.complained":
+		column = "complained"
+	default:
+		return fmt.Errorf("invalid engagement event type: %s", eventType)
+	}
+
+	query := fmt.Sprintf("UPDATE invoices SET %s = 1 WHERE id = ?", column)
+	_, err := db.conn.Exec(query, invoiceID)
+	return err
+}
+
+// GetInvoice retrieves an invoice by its ID.
+func (db *DB) GetInvoice(invoiceID string) (*models.Invoice, error) {
+	row := db.conn.QueryRow(`SELECT id, job_id, invoice_number, recipient_email, status, error_reason, attempts, last_attempt_at, opened, bounced, complained
+							  FROM invoices WHERE id = ?`, invoiceID)
+	inv := &models.Invoice{}
+	err := row.Scan(&inv.ID, &inv.JobID, &inv.InvoiceNumber, &inv.RecipientEmail, &inv.Status, &inv.ErrorReason, &inv.Attempts, &inv.LastAttemptAt, &inv.Opened, &inv.Bounced, &inv.Complained)
+	if err != nil {
+		return nil, err
+	}
+	return inv, nil
 }
 
 // GetLatestActiveJobID returns the ID of the latest active (PROCESSING) job, or the latest completed job.

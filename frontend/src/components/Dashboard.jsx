@@ -13,6 +13,7 @@ import {
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
+    Legend,
 } from 'recharts'
 import {
     Zap,
@@ -20,11 +21,14 @@ import {
     LayoutDashboard,
     Clock,
     Calendar as CalendarIcon,
+    Radio,
+    Mail,
+    User,
 } from 'lucide-react'
 
 function Dashboard({ onNavigateHistory }) {
     const { user, logout, token } = useAuth()
-    const { metrics, connected } = useWebSocket(token)
+    const { metrics, events, connected } = useWebSocket(token)
     const [metricsHistory, setMetricsHistory] = useState([])
     const [currentTime, setCurrentTime] = useState(new Date())
 
@@ -48,6 +52,7 @@ function Dashboard({ onNavigateHistory }) {
                     time: timeLabel,
                     exitosos: metrics.success_count,
                     errores: metrics.error_validation_count + metrics.error_network_count,
+                    aperturas: metrics.opened_count || 0,
                     procesados: metrics.processed_count,
                 }
                 const updated = [...prev, newEntry]
@@ -165,7 +170,55 @@ function Dashboard({ onNavigateHistory }) {
                 {/* Two Column Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Dropzone */}
-                    <Dropzone onUploadComplete={handleUploadComplete} />
+                    <div className="space-y-6">
+                        <Dropzone onUploadComplete={handleUploadComplete} />
+
+                        {/* Live Activity Feed */}
+                        <div className="glass-card p-6 animate-slide-up" style={{ animationDelay: '400ms' }}>
+                            <div className="flex items-center justify-between mb-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-lg bg-cyan-500/20">
+                                        <Radio className="w-5 h-5 text-cyan-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-white font-semibold text-sm">Actividad en Vivo</h3>
+                                        <p className="text-surface-500 text-xs">Eventos de Resend detectados</p>
+                                    </div>
+                                </div>
+                                <span className="badge badge-processing animate-pulse">Live</span>
+                            </div>
+
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                {events.length > 0 ? (
+                                    events.map((event, idx) => (
+                                        <div key={idx} className="flex items-start gap-3 p-3 rounded-xl bg-surface-800/40 border border-surface-700/30 animate-fade-in">
+                                            <div className={`p-2 rounded-lg ${event.event_type === 'email.opened' ? 'bg-cyan-500/10 text-cyan-400' :
+                                                event.event_type === 'email.bounced' ? 'bg-orange-500/10 text-orange-400' :
+                                                    'bg-surface-700 text-surface-400'
+                                                }`}>
+                                                {event.event_type === 'email.opened' ? <Mail className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-surface-200 text-sm truncate">
+                                                    <span className="font-semibold text-white">Factura #{event.invoice_number || '---'}</span>
+                                                    {event.event_type === 'email.opened' ? ' abierta por ' : ' procesada para '}
+                                                    <span className="text-hardsend-300">{event.recipient || event.email || 'usuario'}</span>
+                                                </p>
+                                                <p className="text-surface-500 text-[10px] mt-1">
+                                                    {new Date(event.created_at || Date.now()).toLocaleTimeString()} • {event.event_type || 'evento'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="py-10 text-center">
+                                        <Radio className="w-8 h-8 text-surface-700 mx-auto mb-2 opacity-20" />
+                                        <p className="text-surface-600 text-sm">Esperando actividad...</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Live Chart */}
                     <div className="glass-card p-6 animate-slide-up" style={{ animationDelay: '350ms' }}>
@@ -190,6 +243,10 @@ function Dashboard({ onNavigateHistory }) {
                                         <linearGradient id="colorErrores" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorAperturas" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -222,6 +279,16 @@ function Dashboard({ onNavigateHistory }) {
                                         fill="url(#colorErrores)"
                                         strokeWidth={2}
                                     />
+                                    <Area
+                                        type="monotone"
+                                        dataKey="aperturas"
+                                        name="Aperturas"
+                                        stroke="#22d3ee"
+                                        fillOpacity={1}
+                                        fill="url(#colorAperturas)"
+                                        strokeWidth={2}
+                                    />
+                                    <Legend verticalAlign="top" height={36} iconType="circle" />
                                 </AreaChart>
                             </ResponsiveContainer>
                         ) : (

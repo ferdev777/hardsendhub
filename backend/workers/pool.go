@@ -1,6 +1,8 @@
 package workers
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -8,8 +10,8 @@ import (
 
 	"hardsend/config"
 	"hardsend/database"
+	"hardsend/email"
 	"hardsend/models"
-	"hardsend/ses"
 	"hardsend/websocket"
 )
 
@@ -17,7 +19,7 @@ import (
 type Pool struct {
 	cfg            *config.Config
 	db             *database.DB
-	sesClient      *ses.Client
+	emailClient    email.EmailSender // Changed to interface for professionalism
 	hub            *websocket.Hub
 	circuitBreaker *CircuitBreaker
 	jobChan        chan models.InvoiceJob
@@ -28,11 +30,11 @@ type Pool struct {
 }
 
 // NewPool creates a new worker pool.
-func NewPool(cfg *config.Config, db *database.DB, sesClient *ses.Client, hub *websocket.Hub) *Pool {
+func NewPool(cfg *config.Config, db *database.DB, emailClient email.EmailSender, hub *websocket.Hub) *Pool {
 	return &Pool{
 		cfg:            cfg,
 		db:             db,
-		sesClient:      sesClient,
+		emailClient:    emailClient,
 		hub:            hub,
 		circuitBreaker: NewCircuitBreaker(cfg.CBFailureThreshold, cfg.CBRecoveryTimeout),
 		jobChan:        make(chan models.InvoiceJob, cfg.WorkerCount*2),
@@ -106,7 +108,7 @@ func (p *Pool) worker(id int) {
 	log.Printf("[WorkerPool] Worker %d stopped", id)
 }
 
-// processInvoice handles sending a single invoice email with retry logic.
+// processInvoice handles sending a single invoice email with retry logic and context timeouts.
 func (p *Pool) processInvoice(job models.InvoiceJob) {
 	invoice := job.Invoice
 
@@ -123,8 +125,17 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 			time.Sleep(5 * time.Second) // Check every 5 seconds
 		}
 
-		// Attempt to send via SES
-		err := p.sesClient.SendInvoiceEmail(invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName)
+		// Professional approach: Create a context with timeout for the individual request
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+
+		// Attempt to send via EmailSender
+		var err error
+		if p.emailClient == nil {
+			err = fmt.Errorf("email service is not initialized on the server (check API keys)")
+		} else {
+			err = p.emailClient.SendInvoiceEmail(ctx, invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName, invoice.ID)
+		}
+		cancel()
 
 		if err == nil {
 			// Success
@@ -148,6 +159,8 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 		if attempt < p.cfg.MaxRetries {
 			log.Printf("[Worker] Waiting %v before retry for invoice %s",
 				p.cfg.RetryDelay, invoice.InvoiceNumber)
+
+			// Use a context-aware sleep or just time.Sleep in this worker loop
 			time.Sleep(p.cfg.RetryDelay)
 		}
 	}

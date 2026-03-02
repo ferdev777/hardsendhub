@@ -29,10 +29,10 @@ type Config struct {
 	CBFailureThreshold int
 	CBRecoveryTimeout  time.Duration
 
-	// AWS SES settings
-	AWSRegion      string
-	SESFromAddress string
-	SESRateLimit   int // emails per second
+	// Resend settings
+	ResendAPIKey    string
+	ResendFrom      string
+	ResendRateLimit int // emails per second
 
 	// Database
 	DBPath string
@@ -61,9 +61,9 @@ func Load() *Config {
 		RetryDelay:         parseDuration(getEnv("RETRY_DELAY", "60s")),
 		CBFailureThreshold: parseInt(getEnv("CB_FAILURE_THRESHOLD", "5")),
 		CBRecoveryTimeout:  parseDuration(getEnv("CB_RECOVERY_TIMEOUT", "300s")),
-		AWSRegion:          getEnv("AWS_REGION", "us-east-1"),
-		SESFromAddress:     getEnv("SES_FROM_ADDRESS", "noreply@devrow.com"),
-		SESRateLimit:       parseInt(getEnv("SES_RATE_LIMIT", "14")),
+		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),
+		ResendFrom:         getEnv("RESEND_FROM", "notificaciones@facturasvideodigital.com"),
+		ResendRateLimit:    parseInt(getEnv("RESEND_RATE_LIMIT", "10")),
 		DBPath:             getEnv("DB_PATH", "./hardsend_metrics.db"),
 		TempDir:            getEnv("TEMP_DIR", "./tmp"),
 	}

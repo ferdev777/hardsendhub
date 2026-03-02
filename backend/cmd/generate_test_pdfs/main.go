@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type testInvoice struct {
@@ -51,9 +52,9 @@ BT
 /F1 12 Tf
 (Detalle del Servicio: CABLE/INTERNET) Tj
 0 -30 Td
-(Periodo: 03/2026) Tj
+(Periodo: %s) Tj
 0 -20 Td
-(Vencimiento: 31/03/2026) Tj
+(Vencimiento: %s) Tj
 ET
 endstream
 endobj
@@ -73,26 +74,26 @@ trailer
 << /Size 6 /Root 1 0 R >>
 startxref
 0
-%%%%EOF`, inv.InvNumber, inv.ClientName)
+%%%%EOF`, inv.InvNumber, inv.ClientName, time.Now().Format("01/2006"), time.Now().AddDate(0, 0, 30).Format("02/01/2006"))
 
 	return []byte(pdf)
 }
 
 func main() {
 	invoices := []testInvoice{
-		{SeqNumber: "00000101", InvNumber: "B0002-00000001", ClientName: "HIRSCHFELD FERNANDO"},
-		{SeqNumber: "00000102", InvNumber: "B0002-00000002", ClientName: "HIRSCHFELD FERNANDO GABRIEL"},
-		{SeqNumber: "00000103", InvNumber: "B0002-00000003", ClientName: "PEREZ MARIA LAURA"},
-		{SeqNumber: "00000104", InvNumber: "B0002-00000004", ClientName: "GONZALEZ SANTIAGO"},
-		{SeqNumber: "00000105", InvNumber: "B0002-00000005", ClientName: "PELOZO LAUTARO"},
-		{SeqNumber: "00000106", InvNumber: "B0002-00000006", ClientName: "MARTINEZ LUCAS GABRIEL"},
-		{SeqNumber: "00000107", InvNumber: "B0002-00000007", ClientName: "SOLVTECH SRL"},
+		{SeqNumber: "00001101", InvNumber: "B0002-00001901", ClientName: "CLIENTE DE PRUEBA UNO"},
+		{SeqNumber: "00001102", InvNumber: "B0002-00001902", ClientName: "CLIENTE DE PRUEBA DOS"},
+		{SeqNumber: "00001103", InvNumber: "B0002-00001903", ClientName: "PEREZ MARIA LAURA"},
+		{SeqNumber: "00001104", InvNumber: "B0002-00001904", ClientName: "GONZALEZ SANTIAGO"},
+		{SeqNumber: "00001105", InvNumber: "B0002-00001905", ClientName: "PELOZO LAUTARO"},
+		{SeqNumber: "00001106", InvNumber: "B0002-00001906", ClientName: "MARTINEZ LUCAS GABRIEL"},
+		{SeqNumber: "00001107", InvNumber: "B0002-00001907", ClientName: "SOLVTECH SRL"},
 	}
 
-	outputDir := filepath.Join("..", "test_data")
+	outputDir := filepath.Join("..", "..", "..", "test_data")
 
-	// Delete old simple-named PDFs
-	oldFiles, _ := filepath.Glob(filepath.Join(outputDir, "B0002-*.pdf"))
+	// Delete old PDFs in test_data
+	oldFiles, _ := filepath.Glob(filepath.Join(outputDir, "*.pdf"))
 	for _, f := range oldFiles {
 		os.Remove(f)
 		fmt.Printf("Deleted old: %s\n", filepath.Base(f))

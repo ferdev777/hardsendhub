@@ -9,6 +9,9 @@ import {
     Wifi,
     WifiOff,
     Shield,
+    MailOpen,
+    Eraser,
+    Flag,
 } from 'lucide-react'
 
 function StatsRow({ metrics, connected }) {
@@ -20,6 +23,12 @@ function StatsRow({ metrics, connected }) {
     const successRate = metrics?.success_rate || 0
     const activeWorkers = metrics?.active_workers || 0
     const circuitState = metrics?.circuit_breaker_state || 'CLOSED'
+
+    // Resend Engagement Metrics
+    const opendCount = metrics?.opened_count || 0
+    const bounceCount = metrics?.bounce_count || 0
+    const complaintCount = metrics?.complaint_count || 0
+    const openRate = successCount > 0 ? (opendCount / successCount) * 100 : 0
 
     const stats = [
         {
@@ -54,6 +63,30 @@ function StatsRow({ metrics, connected }) {
             iconColor: 'text-warning-light',
             subtext: circuitState === 'OPEN' ? '⚠️ Circuit Breaker ABIERTO' : 'Circuit Breaker: OK',
         },
+        {
+            label: 'Aperturas',
+            value: opendCount.toLocaleString(),
+            icon: MailOpen,
+            colorClass: 'stat-card-cyan',
+            iconColor: 'text-cyan-400',
+            subtext: `Tasa: ${openRate.toFixed(1)}%`,
+        },
+        {
+            label: 'Rebotes / Bounces',
+            value: bounceCount.toLocaleString(),
+            icon: Eraser,
+            colorClass: 'stat-card-orange',
+            iconColor: 'text-orange-400',
+            subtext: 'Emails no entregados',
+        },
+        {
+            label: 'Spam / Quejas',
+            value: complaintCount.toLocaleString(),
+            icon: Flag,
+            colorClass: 'stat-card-purple',
+            iconColor: 'text-purple-400',
+            subtext: 'Reportes recibidos',
+        },
     ]
 
     return (
@@ -83,25 +116,25 @@ function StatsRow({ metrics, connected }) {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex flex-wrap justify-center gap-4">
                 {stats.map((stat, index) => {
                     const Icon = stat.icon
                     return (
                         <div
                             key={stat.label}
-                            className={`stat-card ${stat.colorClass} animate-slide-up`}
+                            className={`stat-card ${stat.colorClass} animate-slide-up w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.33%-12px)] xl:w-[calc(25%-12px)] 2xl:w-[calc(14.28%-14px)]`}
                             style={{ animationDelay: `${index * 100}ms` }}
                         >
-                            <div className="flex items-start justify-between mb-3">
-                                <div>
-                                    <p className="text-surface-400 text-xs font-medium uppercase tracking-wider mb-1">
+                            <div className="flex items-start justify-between mb-3 gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-surface-400 text-xs font-medium uppercase tracking-wider mb-1 leading-tight">
                                         {stat.label}
                                     </p>
                                     <p className="text-3xl font-bold text-white tabular-nums">
                                         {stat.value}
                                     </p>
                                 </div>
-                                <div className={`p-2.5 rounded-xl bg-surface-800/50 ${stat.iconColor}`}>
+                                <div className={`p-2 rounded-xl bg-surface-800/50 flex-shrink-0 ${stat.iconColor}`}>
                                     <Icon className="w-5 h-5" />
                                 </div>
                             </div>
