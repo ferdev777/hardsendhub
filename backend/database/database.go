@@ -60,6 +60,18 @@ func (db *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_invoices_job_id ON invoices(job_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number)`,
+		`CREATE TABLE IF NOT EXISTS missing_emails (
+			id TEXT PRIMARY KEY,
+			job_id TEXT NOT NULL,
+			invoice_number TEXT NOT NULL,
+			client_name TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			resolved INTEGER NOT NULL DEFAULT 0,
+			resolved_at TIMESTAMP,
+			FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_missing_emails_resolved ON missing_emails(resolved)`,
+		`CREATE INDEX IF NOT EXISTS idx_missing_emails_created_at ON missing_emails(created_at)`,
 	}
 
 	for _, m := range migrations {
@@ -79,6 +91,21 @@ func (db *DB) migrate() error {
 		_, err := db.conn.Exec(m)
 		if err != nil {
 			// Check if it's a "duplicate column name" error and ignore it
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("alteration failed: %s: %w", m, err)
+		}
+	}
+
+	// Add email and reason columns to missing_emails if they don't exist
+	missingEmailAlterations := []string{
+		"ALTER TABLE missing_emails ADD COLUMN email TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE missing_emails ADD COLUMN reason TEXT NOT NULL DEFAULT 'no_email'",
+	}
+	for _, m := range missingEmailAlterations {
+		_, err := db.conn.Exec(m)
+		if err != nil {
 			if strings.Contains(err.Error(), "duplicate column name") {
 				continue
 			}
@@ -401,4 +428,135 @@ func (db *DB) GetHistorySummary(from, to time.Time) (*models.HistorySummary, err
 	}
 
 	return summary, nil
+}
+
+// --- Missing Email Operations ---
+
+// CreateMissingEmail inserts a new missing email record.
+// If the same invoice_number was already resolved, it skips the insert to avoid duplicates.
+func (db *DB) CreateMissingEmail(me *models.MissingEmail) error {
+	// Check if this invoice was already resolved before — don't re-register it
+	var count int
+	err := db.conn.QueryRow(
+		"SELECT COUNT(*) FROM missing_emails WHERE invoice_number = ? AND resolved = 1",
+		me.InvoiceNumber,
+	).Scan(&count)
+	if err == nil && count > 0 {
+		return nil // Already resolved before, skip
+	}
+
+	// Also check if it's already pending (same invoice in current batch)
+	err = db.conn.QueryRow(
+		"SELECT COUNT(*) FROM missing_emails WHERE invoice_number = ? AND resolved = 0",
+		me.InvoiceNumber,
+	).Scan(&count)
+	if err == nil && count > 0 {
+		return nil // Already registered as pending, skip duplicate
+	}
+
+	_, err = db.conn.Exec(
+		`INSERT INTO missing_emails (id, job_id, invoice_number, client_name, email, reason, created_at, resolved)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+		me.ID, me.JobID, me.InvoiceNumber, me.ClientName, me.Email, me.Reason, me.CreatedAt,
+	)
+	return err
+}
+
+// GetMissingEmails retrieves missing emails within a date range, optionally filtering by resolved status.
+func (db *DB) GetMissingEmails(from, to time.Time, showResolved bool) ([]models.MissingEmail, error) {
+	var query string
+	var args []interface{}
+
+	if showResolved {
+		query = `SELECT id, job_id, invoice_number, client_name, email, reason, created_at, resolved, resolved_at
+				 FROM missing_emails
+				 WHERE created_at >= ? AND created_at <= ?
+				 ORDER BY created_at DESC`
+		args = []interface{}{from, to}
+	} else {
+		query = `SELECT id, job_id, invoice_number, client_name, email, reason, created_at, resolved, resolved_at
+				 FROM missing_emails
+				 WHERE created_at >= ? AND created_at <= ? AND resolved = 0
+				 ORDER BY created_at DESC`
+		args = []interface{}{from, to}
+	}
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []models.MissingEmail
+	for rows.Next() {
+		var me models.MissingEmail
+		if err := rows.Scan(&me.ID, &me.JobID, &me.InvoiceNumber, &me.ClientName, &me.Email, &me.Reason, &me.CreatedAt, &me.Resolved, &me.ResolvedAt); err != nil {
+			return nil, err
+		}
+		results = append(results, me)
+	}
+	return results, nil
+}
+
+// GetMissingEmailSummary retrieves aggregated stats for missing emails in a date range.
+func (db *DB) GetMissingEmailSummary(from, to time.Time) (*models.MissingEmailSummary, error) {
+	summary := &models.MissingEmailSummary{}
+
+	err := db.conn.QueryRow(`
+		SELECT
+			COALESCE(COUNT(*), 0),
+			COALESCE(SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN resolved = 1 THEN 1 ELSE 0 END), 0)
+		FROM missing_emails
+		WHERE created_at >= ? AND created_at <= ?`,
+		from, to,
+	).Scan(&summary.Total, &summary.Pending, &summary.Resolved)
+	if err != nil {
+		return nil, err
+	}
+	return summary, nil
+}
+
+// ResolveMissingEmail marks a single missing email as resolved.
+func (db *DB) ResolveMissingEmail(id string) error {
+	now := time.Now()
+	_, err := db.conn.Exec(
+		"UPDATE missing_emails SET resolved = 1, resolved_at = ? WHERE id = ?",
+		now, id,
+	)
+	return err
+}
+
+// ResolveMissingEmailsBulk marks multiple missing emails as resolved.
+func (db *DB) ResolveMissingEmailsBulk(ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	now := time.Now()
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, 0, len(ids)+1)
+	args = append(args, now)
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	query := fmt.Sprintf(
+		"UPDATE missing_emails SET resolved = 1, resolved_at = ? WHERE id IN (%s)",
+		strings.Join(placeholders, ","),
+	)
+	_, err := db.conn.Exec(query, args...)
+	return err
+}
+
+// ResolveAllMissingEmails marks all pending missing emails in a date range as resolved.
+func (db *DB) ResolveAllMissingEmails(from, to time.Time) (int64, error) {
+	now := time.Now()
+	result, err := db.conn.Exec(
+		"UPDATE missing_emails SET resolved = 1, resolved_at = ? WHERE resolved = 0 AND created_at >= ? AND created_at <= ?",
+		now, from, to,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

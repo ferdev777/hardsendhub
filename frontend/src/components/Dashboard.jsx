@@ -24,9 +24,10 @@ import {
     Radio,
     Mail,
     User,
+    MailX,
 } from 'lucide-react'
 
-function Dashboard({ onNavigateHistory }) {
+function Dashboard({ onNavigateHistory, onNavigateMissingEmails }) {
     const { user, logout, token } = useAuth()
     const { metrics, events, connected } = useWebSocket(token)
     const [metricsHistory, setMetricsHistory] = useState([])
@@ -124,6 +125,19 @@ function Dashboard({ onNavigateHistory }) {
                             </div>
 
                             <div className="h-6 w-px bg-surface-700" />
+
+                            {/* Missing Emails Button */}
+                            <button
+                                onClick={onNavigateMissingEmails}
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg
+                                    bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300
+                                    border border-amber-500/20 hover:border-amber-500/40
+                                    transition-all duration-200 text-sm font-medium"
+                                id="missing-emails-button"
+                            >
+                                <MailX className="w-4 h-4" />
+                                <span className="hidden sm:inline">Faltantes</span>
+                            </button>
 
                             {/* Registro Button */}
                             <button

@@ -130,10 +130,17 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read due date from form (MANDATORY)
+	dueDate := r.FormValue("due_date")
+	if dueDate == "" {
+		http.Error(w, `{"error":"Debe ingresar la fecha de vencimiento antes de enviar."}`, http.StatusBadRequest)
+		return
+	}
+
 	h.pool.SetCurrentJobID(jobID)
 
 	// Process files in background
-	go h.processFiles(jobID, files)
+	go h.processFiles(jobID, files, dueDate)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -144,7 +151,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 }
 
 // processFiles processes uploaded files (ZIP or PDFs).
-func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader) {
+func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader, dueDate string) {
 	var pdfFiles []pdfFileInfo
 
 	clientDB := h.getClientDB()
@@ -215,9 +222,20 @@ func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader
 		invoiceID := uuid.New().String()
 
 		if validationError != "" {
-			// Type X invoices are silently skipped — not sent, not counted as errors
+			// Type X invoices are skipped from sending but counted as successful
 			if validationError == "SKIP_TYPE_X" {
-				log.Printf("[Upload] Skipping type X invoice: %s", pdf.filename)
+				reason := "Factura tipo X omitida (no requiere envío)"
+				inv := &models.Invoice{
+					ID:             invoiceID,
+					JobID:          jobID,
+					InvoiceNumber:  extractInvoiceNumberSafe(pdf.filename),
+					RecipientEmail: "",
+					Status:         models.InvoiceStatusSuccess,
+					ErrorReason:    &reason,
+					Attempts:       0,
+				}
+				_ = h.db.CreateInvoice(inv)
+				log.Printf("[Upload] Skipping type X invoice (counted as success): %s", pdf.filename)
 				continue
 			}
 
@@ -233,6 +251,21 @@ func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader
 			}
 			_ = h.db.CreateInvoice(inv)
 			log.Printf("[Upload] Validation error for %s: %s", pdf.filename, validationError)
+
+			// Track missing emails for invoices not found in client database
+			if strings.Contains(validationError, "not found in client database") {
+				clientName := parser.ExtractClientNameFromFilename(pdf.filename)
+				me := &models.MissingEmail{
+					ID:            uuid.New().String(),
+					JobID:         jobID,
+					InvoiceNumber: extractInvoiceNumberSafe(pdf.filename),
+					ClientName:    clientName,
+					Email:         "",
+					Reason:        "no_email",
+					CreatedAt:     time.Now(),
+				}
+				_ = h.db.CreateMissingEmail(me)
+			}
 			continue
 		}
 
@@ -268,6 +301,7 @@ func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader
 			PDFPath:    pdf.path,
 			JobID:      jobID,
 			ClientName: clientName,
+			DueDate:    dueDate,
 		})
 		queued++
 	}

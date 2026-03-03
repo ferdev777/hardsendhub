@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"hardsend/database"
 	"hardsend/models"
 	"hardsend/websocket"
@@ -53,7 +55,7 @@ func (h *WebhookHandler) ResendWebhook(w http.ResponseWriter, r *http.Request) {
 
 	if invoiceID == "" {
 		log.Printf("[Webhook] No invoice_id tag found in event: %s", payload.Type)
-		w.WriteHeader(http.StatusOK) // Still return OK to avoid retries
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -63,12 +65,26 @@ func (h *WebhookHandler) ResendWebhook(w http.ResponseWriter, r *http.Request) {
 	err := h.db.UpdateEngagementStatus(invoiceID, payload.Type)
 	if err != nil {
 		log.Printf("[Webhook] Failed to update DB for invoice %s: %v", invoiceID, err)
-		// Internal error is fine, but we usually return 200 to webhooks to avoid retries if the event was processed
 	}
 
-	// Get invoice details specifically for the live feed
+	// Get invoice details for live feed and bounce tracking
 	inv, err := h.db.GetInvoice(invoiceID)
 	if err == nil {
+		// If it's a bounce, register in missing_emails so it appears in Faltantes
+		if payload.Type == "email.bounced" {
+			me := &models.MissingEmail{
+				ID:            uuid.New().String(),
+				JobID:         inv.JobID,
+				InvoiceNumber: inv.InvoiceNumber,
+				ClientName:    "",
+				Email:         payload.Data.Email,
+				Reason:        "bounced",
+				CreatedAt:     time.Now(),
+			}
+			_ = h.db.CreateMissingEmail(me)
+			log.Printf("[Webhook] Bounce registered for %s (%s) in missing_emails", inv.InvoiceNumber, payload.Data.Email)
+		}
+
 		// Broadcast activity event to WebSocket
 		event := models.ActivityEvent{
 			Type:          "activity_event",

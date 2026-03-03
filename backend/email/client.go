@@ -16,7 +16,7 @@ import (
 // This allows for mocking in unit tests and follows
 // Clean Architecture principles for high-profile Go projects.
 type EmailSender interface {
-	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID string) error
+	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string) error
 }
 
 // Client wraps the Resend client with rate limiting.
@@ -77,7 +77,7 @@ func (c *Client) refillRateLimiter() {
 
 // SendInvoiceEmail sends an invoice PDF as an email attachment via Resend.
 // It uses the provided context to respect timeouts and cancellations.
-func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID string) error {
+func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string) error {
 	// Wait for rate limiter token or context cancellation
 	select {
 	case <-c.rateLimiter:
@@ -94,8 +94,8 @@ func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNu
 
 	// Build email content
 	subject := "FACTURA MENSUAL VIDEO DIGITAL S.R.L"
-	htmlBody := buildInvoiceHTML(clientName, invoiceNumber)
-	textBody := buildInvoiceText(clientName, invoiceNumber)
+	htmlBody := buildInvoiceHTML(clientName, invoiceNumber, dueDate)
+	textBody := buildInvoiceText(clientName, invoiceNumber, dueDate)
 
 	// Send via Resend
 	params := &resend.SendEmailRequest{
@@ -129,10 +129,8 @@ func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNu
 }
 
 // buildInvoiceHTML generates the HTML email body matching the Video Digital template.
-func buildInvoiceHTML(clientName, invoiceNumber string) string {
-	now := time.Now()
-	dueDate := now.AddDate(0, 0, 30)
-	dueDateStr := fmt.Sprintf("%02d/%02d/%d", dueDate.Day(), dueDate.Month(), dueDate.Year())
+func buildInvoiceHTML(clientName, invoiceNumber, dueDate string) string {
+	dueDateStr := dueDate
 
 	greeting := "Estimado Sr/a."
 	if clientName != "" {
@@ -204,13 +202,29 @@ con vencimiento el d&iacute;a : <strong style="color:#ffffff;">%s</strong>
 
 <!-- Contact -->
 <tr>
-<td style="padding:10px 40px 25px 40px;">
+<td style="padding:10px 40px 15px 40px;">
 <p style="color:#d1d5db;font-size:14px;line-height:1.7;margin:0;">
 Ante cualquier consulta puede escribirnos a :<br>
 <a href="mailto:clientes@videodigital.com.ar" style="color:#3b82f6;text-decoration:none;font-weight:bold;">clientes@videodigital.com.ar</a>
  o
 <a href="mailto:ventas@videodigital.com.ar" style="color:#3b82f6;text-decoration:none;font-weight:bold;">ventas@videodigital.com.ar</a>
 </p>
+</td>
+</tr>
+
+<!-- Correction Notice -->
+<tr>
+<td style="padding:5px 40px 25px 40px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#fef3c7;border-radius:8px;border-left:4px solid #f59e0b;width:100%%;">
+<tr>
+<td style="padding:15px 20px;">
+<p style="color:#92400e;font-size:13px;font-weight:bold;margin:0 0 6px 0;">AVISO IMPORTANTE - Correcci&oacute;n de fecha</p>
+<p style="color:#78350f;font-size:13px;line-height:1.6;margin:0;">
+Le pedimos disculpas. Si recibi&oacute; una factura previamente con fecha de vencimiento 02/04/2026, le informamos que dicha fecha era incorrecta. La fecha de vencimiento correcta es: <strong>%s</strong>.
+</p>
+</td>
+</tr>
+</table>
 </td>
 </tr>
 
@@ -241,14 +255,12 @@ Este es un env&iacute;o autom&aacute;tico. Por favor no responda este correo.
 </tr>
 </table>
 </body>
-</html>`, greeting, dueDateStr, invoiceNumber)
+</html>`, greeting, dueDateStr, invoiceNumber, dueDateStr)
 }
 
 // buildInvoiceText generates the plain text fallback body.
-func buildInvoiceText(clientName, invoiceNumber string) string {
-	now := time.Now()
-	dueDate := now.AddDate(0, 0, 30)
-	dueDateStr := fmt.Sprintf("%02d/%02d/%d", dueDate.Day(), dueDate.Month(), dueDate.Year())
+func buildInvoiceText(clientName, invoiceNumber, dueDate string) string {
+	dueDateStr := dueDate
 
 	greeting := "Estimado Sr/a."
 	if clientName != "" {
@@ -269,10 +281,13 @@ Numero de Factura: %s
 Ante cualquier consulta puede escribirnos a :
 clientes@videodigital.com.ar o ventas@videodigital.com.ar
 
+AVISO IMPORTANTE - Correccion de fecha:
+Le pedimos disculpas. Si recibio una factura previamente con fecha de vencimiento 02/04/2026, le informamos que dicha fecha era incorrecta. La fecha de vencimiento correcta es: %s.
+
 Saludos Cordiales
 
 Video Digital S.R.L
 
 ---
-Este es un envio automatico. Por favor no responda este correo.`, greeting, dueDateStr, invoiceNumber)
+Este es un envio automatico. Por favor no responda este correo.`, greeting, dueDateStr, invoiceNumber, dueDateStr)
 }

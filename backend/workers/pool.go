@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 
 	"hardsend/config"
 	"hardsend/database"
@@ -133,7 +136,7 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 		if p.emailClient == nil {
 			err = fmt.Errorf("email service is not initialized on the server (check API keys)")
 		} else {
-			err = p.emailClient.SendInvoiceEmail(ctx, invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName, invoice.ID)
+			err = p.emailClient.SendInvoiceEmail(ctx, invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName, invoice.ID, job.DueDate)
 		}
 		cancel()
 
@@ -152,6 +155,26 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 		log.Printf("[Worker] Failed to send invoice %s (attempt %d/%d): %s",
 			invoice.InvoiceNumber, attempt, p.cfg.MaxRetries, errStr)
 
+		// Detect permanent errors (invalid email) — don't retry
+		if strings.Contains(errStr, "Invalid") {
+			reason := "Email inválido rechazado por el servidor"
+			_ = p.db.UpdateInvoiceStatus(invoice.ID, models.InvoiceStatusErrorValidation, &reason, attempt)
+			// Register in missing_emails as invalid_email
+			me := &models.MissingEmail{
+				ID:            uuid.New().String(),
+				JobID:         job.JobID,
+				InvoiceNumber: invoice.InvoiceNumber,
+				ClientName:    job.ClientName,
+				Email:         invoice.RecipientEmail,
+				Reason:        "invalid_email",
+				CreatedAt:     time.Now(),
+			}
+			_ = p.db.CreateMissingEmail(me)
+			log.Printf("[Worker] Invalid email detected for %s (%s) — registered in missing_emails",
+				invoice.InvoiceNumber, invoice.RecipientEmail)
+			return
+		}
+
 		// Update status with error
 		_ = p.db.UpdateInvoiceStatus(invoice.ID, models.InvoiceStatusErrorNetwork, &errStr, attempt)
 
@@ -159,8 +182,6 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 		if attempt < p.cfg.MaxRetries {
 			log.Printf("[Worker] Waiting %v before retry for invoice %s",
 				p.cfg.RetryDelay, invoice.InvoiceNumber)
-
-			// Use a context-aware sleep or just time.Sleep in this worker loop
 			time.Sleep(p.cfg.RetryDelay)
 		}
 	}

@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './components/Login'
 import Dashboard from './components/Dashboard'
 import History from './components/History'
+import MissingEmails from './components/MissingEmails'
 
 function AppContent() {
     const { isAuthenticated, loading } = useAuth()
@@ -28,7 +29,16 @@ function AppContent() {
         return <History onBack={() => setCurrentPage('dashboard')} />
     }
 
-    return <Dashboard onNavigateHistory={() => setCurrentPage('history')} />
+    if (currentPage === 'missing-emails') {
+        return <MissingEmails onBack={() => setCurrentPage('dashboard')} />
+    }
+
+    return (
+        <Dashboard
+            onNavigateHistory={() => setCurrentPage('history')}
+            onNavigateMissingEmails={() => setCurrentPage('missing-emails')}
+        />
+    )
 }
 
 function App() {

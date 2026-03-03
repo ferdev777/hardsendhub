@@ -9,6 +9,7 @@ import {
     CheckCircle2,
     XCircle,
     Loader2,
+    Calendar,
 } from 'lucide-react'
 
 function Dropzone({ onUploadComplete }) {
@@ -17,6 +18,7 @@ function Dropzone({ onUploadComplete }) {
     const [uploadResult, setUploadResult] = useState(null)
     const [selectedFiles, setSelectedFiles] = useState([])
     const [txtFile, setTxtFile] = useState(null)
+    const [dueDate, setDueDate] = useState('')
 
     const onDrop = useCallback((acceptedFiles) => {
         const txtFiles = acceptedFiles.filter(f =>
@@ -40,6 +42,8 @@ function Dropzone({ onUploadComplete }) {
             'application/pdf': ['.pdf'],
             'application/zip': ['.zip'],
             'application/x-zip-compressed': ['.zip'],
+            'application/x-rar-compressed': ['.rar'],
+            'application/vnd.rar': ['.rar'],
             'text/plain': ['.txt'],
         },
         multiple: true,
@@ -56,6 +60,10 @@ function Dropzone({ onUploadComplete }) {
 
     const handleUpload = async () => {
         if (!txtFile && selectedFiles.length === 0) return
+        if (!dueDate) {
+            setUploadResult({ success: false, message: 'Debe seleccionar la fecha de vencimiento antes de enviar.' })
+            return
+        }
 
         setUploading(true)
         setUploadResult(null)
@@ -70,6 +78,14 @@ function Dropzone({ onUploadComplete }) {
             selectedFiles.forEach(file => {
                 formData.append('files', file)
             })
+
+            // Add due date in DD/MM/YYYY format if set
+            if (dueDate) {
+                // Parse directly from YYYY-MM-DD to avoid timezone issues
+                const [year, month, day] = dueDate.split('-')
+                const formatted = `${day}/${month}/${year}`
+                formData.append('due_date', formatted)
+            }
 
             const res = await fetch('/api/upload', {
                 method: 'POST',
@@ -120,7 +136,7 @@ function Dropzone({ onUploadComplete }) {
                 <div>
                     <h3 className="text-white font-semibold text-sm">Zona de Carga</h3>
                     <p className="text-surface-500 text-xs">
-                        Arrastra archivos TXT, ZIP o PDF
+                        Arrastra archivos TXT, ZIP, RAR o PDF
                     </p>
                 </div>
             </div>
@@ -148,7 +164,7 @@ function Dropzone({ onUploadComplete }) {
                                     <Database className="w-3.5 h-3.5" /> TXT (Base de datos)
                                 </span>
                                 <span className="flex items-center gap-1">
-                                    <FileArchive className="w-3.5 h-3.5" /> ZIP
+                                    <FileArchive className="w-3.5 h-3.5" /> ZIP / RAR
                                 </span>
                                 <span className="flex items-center gap-1">
                                     <FileText className="w-3.5 h-3.5" /> PDF
@@ -212,11 +228,48 @@ function Dropzone({ onUploadComplete }) {
                         })}
                     </div>
 
+                    {/* Due Date Picker */}
+                    <div className="mt-4 p-3 rounded-lg bg-surface-800/40 border border-surface-700/30">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-amber-500/10">
+                                <Calendar className="w-4 h-4 text-amber-400" />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-surface-300 text-xs font-medium block mb-1">
+                                    Fecha de Vencimiento (email)
+                                </label>
+                                <input
+                                    type="date"
+                                    value={dueDate}
+                                    onChange={(e) => setDueDate(e.target.value)}
+                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
+                                        text-surface-200 text-sm
+                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
+                                        transition-all duration-200"
+                                    id="due-date-input"
+                                />
+                            </div>
+                        </div>
+                        {dueDate && (() => {
+                            const [y, m, d] = dueDate.split('-')
+                            return (
+                                <p className="text-xs text-amber-400/80 mt-2 ml-11">
+                                    Se informará: {d}/{m}/{y}
+                                </p>
+                            )
+                        })()}
+                        {!dueDate && (
+                            <p className="text-xs text-orange-400 mt-2 ml-11">
+                                ⚠️ Campo obligatorio — Debe definir la fecha de vencimiento
+                            </p>
+                        )}
+                    </div>
+
                     {/* Upload Button */}
                     <button
                         onClick={handleUpload}
-                        disabled={uploading}
-                        className="btn-primary w-full flex items-center justify-center gap-2 mt-3"
+                        disabled={uploading || !dueDate}
+                        className={`w-full flex items-center justify-center gap-2 mt-3 ${!dueDate ? 'btn-primary opacity-50 cursor-not-allowed' : 'btn-primary'}`}
                     >
                         {uploading ? (
                             <>
@@ -236,8 +289,8 @@ function Dropzone({ onUploadComplete }) {
             {/* Upload Result */}
             {uploadResult && (
                 <div className={`mt-4 p-4 rounded-lg border animate-slide-down ${uploadResult.success
-                        ? 'bg-success/10 border-success/30'
-                        : 'bg-danger/10 border-danger/30'
+                    ? 'bg-success/10 border-success/30'
+                    : 'bg-danger/10 border-danger/30'
                     }`}>
                     <div className="flex items-center gap-3">
                         {uploadResult.success ? (

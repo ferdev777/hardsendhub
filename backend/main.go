@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -68,6 +69,7 @@ func main() {
 	uploadHandler := handlers.NewUploadHandler(db, pool, cfg.TempDir)
 	jobsHandler := handlers.NewJobsHandler(db)
 	webhookHandler := handlers.NewWebhookHandler(db, hub)
+	missingEmailsHandler := handlers.NewMissingEmailsHandler(db)
 
 	// Set up router
 	r := chi.NewRouter()
@@ -103,6 +105,9 @@ func main() {
 		r.Get("/api/jobs/{jobID}/metrics", jobsHandler.GetJobMetrics)
 		r.Get("/api/errors", jobsHandler.GetAllErrors)
 		r.Get("/api/history", jobsHandler.GetHistory)
+		r.Get("/api/missing-emails", missingEmailsHandler.GetMissingEmails)
+		r.Get("/api/missing-emails/export", missingEmailsHandler.ExportMissingEmails)
+		r.Post("/api/missing-emails/resolve", missingEmailsHandler.ResolveMissingEmails)
 	})
 
 	// Serve React static files
@@ -114,10 +119,19 @@ func main() {
 		log.Println("[Server] No static directory found. Frontend must be served separately.")
 	}
 
-	// Start server
+	// Start server with generous timeouts for large file uploads
 	addr := fmt.Sprintf(":%s", cfg.ServerPort)
 	log.Printf("[Server] Starting on %s", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadTimeout:       5 * time.Minute,
+		ReadHeaderTimeout: 30 * time.Second,
+		WriteTimeout:      10 * time.Minute,
+		IdleTimeout:       30 * time.Minute,
+		MaxHeaderBytes:    1 << 20, // 1MB max headers
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

@@ -50,6 +50,7 @@ type InvoiceJob struct {
 	PDFPath    string
 	JobID      string
 	ClientName string
+	DueDate    string
 }
 
 // MetricsUpdate is the WebSocket payload sent to the frontend every second.
@@ -123,4 +124,31 @@ type ActivityEvent struct {
 	InvoiceNumber string    `json:"invoice_number"`
 	Recipient     string    `json:"recipient"`
 	CreatedAt     time.Time `json:"created_at"`
+}
+
+// MissingEmail represents an invoice where the client had no email in the TXT database
+// or where the email bounced after sending.
+type MissingEmail struct {
+	ID            string     `json:"id"`
+	JobID         string     `json:"job_id"`
+	InvoiceNumber string     `json:"invoice_number"`
+	ClientName    string     `json:"client_name"`
+	Email         string     `json:"email"`
+	Reason        string     `json:"reason"` // "no_email" or "bounced"
+	CreatedAt     time.Time  `json:"created_at"`
+	Resolved      bool       `json:"resolved"`
+	ResolvedAt    *time.Time `json:"resolved_at"`
+}
+
+// MissingEmailSummary holds aggregated stats for the missing emails view.
+type MissingEmailSummary struct {
+	Total    int `json:"total"`
+	Pending  int `json:"pending"`
+	Resolved int `json:"resolved"`
+}
+
+// MissingEmailResponse combines summary and list for the API response.
+type MissingEmailResponse struct {
+	Summary *MissingEmailSummary `json:"summary"`
+	Items   []MissingEmail       `json:"items"`
 }
