@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"hardsend/models"
+
 	"github.com/resend/resend-go/v2"
 )
 
@@ -16,7 +18,7 @@ import (
 // This allows for mocking in unit tests and follows
 // Clean Architecture principles for high-profile Go projects.
 type EmailSender interface {
-	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string) error
+	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string, tmpl *models.EmailTemplate) error
 }
 
 // Client wraps the Resend client with rate limiting.
@@ -77,7 +79,7 @@ func (c *Client) refillRateLimiter() {
 
 // SendInvoiceEmail sends an invoice PDF as an email attachment via Resend.
 // It uses the provided context to respect timeouts and cancellations.
-func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string) error {
+func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string, tmpl *models.EmailTemplate) error {
 	// Wait for rate limiter token or context cancellation
 	select {
 	case <-c.rateLimiter:
@@ -92,10 +94,13 @@ func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNu
 		return fmt.Errorf("failed to read PDF file at %s: %w", pdfPath, err)
 	}
 
-	// Build email content
+	// Build email content - use template if provided, otherwise defaults
 	subject := "FACTURA MENSUAL VIDEO DIGITAL S.R.L"
-	htmlBody := buildInvoiceHTML(clientName, invoiceNumber, dueDate)
-	textBody := buildInvoiceText(clientName, invoiceNumber, dueDate)
+	if tmpl != nil && tmpl.Subject != "" {
+		subject = tmpl.Subject
+	}
+	htmlBody := buildInvoiceHTML(clientName, invoiceNumber, dueDate, tmpl)
+	textBody := buildInvoiceText(clientName, invoiceNumber, dueDate, tmpl)
 
 	// Send via Resend
 	params := &resend.SendEmailRequest{
@@ -129,12 +134,42 @@ func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNu
 }
 
 // buildInvoiceHTML generates the HTML email body matching the Video Digital template.
-func buildInvoiceHTML(clientName, invoiceNumber, dueDate string) string {
+func buildInvoiceHTML(clientName, invoiceNumber, dueDate string, tmpl *models.EmailTemplate) string {
 	dueDateStr := dueDate
 
 	greeting := "Estimado Sr/a."
 	if clientName != "" {
 		greeting = fmt.Sprintf("Estimado Sr/a. %s", clientName)
+	}
+
+	// Use template body or default
+	bodyText := fmt.Sprintf("A continuaci&oacute;n le adjuntamos la factura del servicio CABLE/INTERNET,\ncon vencimiento el d&iacute;a : <strong style=\"color:#ffffff;\">%s</strong>", dueDateStr)
+	if tmpl != nil && tmpl.BodyText != "" {
+		bodyText = fmt.Sprintf("%s<br><br>Vencimiento: <strong style=\"color:#ffffff;\">%s</strong>", tmpl.BodyText, dueDateStr)
+	}
+
+	headerTitle := "FACTURA MENSUAL VIDEO DIGITAL S.R.L"
+	if tmpl != nil && tmpl.Subject != "" {
+		headerTitle = tmpl.Subject
+	}
+
+	// Build apology section only if provided
+	apologyHTML := ""
+	if tmpl != nil && tmpl.ApologyText != "" {
+		apologyHTML = fmt.Sprintf(`
+<!-- Apology Notice -->
+<tr>
+<td style="padding:5px 40px 25px 40px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#fef3c7;border-radius:8px;border-left:4px solid #f59e0b;width:100%%;">
+<tr>
+<td style="padding:15px 20px;">
+<p style="color:#92400e;font-size:13px;font-weight:bold;margin:0 0 6px 0;">AVISO IMPORTANTE</p>
+<p style="color:#78350f;font-size:13px;line-height:1.6;margin:0;">%s</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>`, tmpl.ApologyText)
 	}
 
 	return fmt.Sprintf(`<!DOCTYPE html>
@@ -144,7 +179,7 @@ func buildInvoiceHTML(clientName, invoiceNumber, dueDate string) string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">
-<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:20px 0;">
+<table role="presentation" width="100%%%%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:20px 0;">
 <tr>
 <td align="center">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
@@ -153,7 +188,7 @@ func buildInvoiceHTML(clientName, invoiceNumber, dueDate string) string {
 <tr>
 <td style="background-color:#111111;padding:30px 40px;text-align:center;border-bottom:3px solid #3b82f6;">
 <h1 style="color:#ffffff;margin:0;font-size:22px;font-weight:bold;letter-spacing:1px;">
-FACTURA MENSUAL VIDEO DIGITAL S.R.L
+%s
 </h1>
 </td>
 </tr>
@@ -180,8 +215,7 @@ POR FAVOR NO RESPONDA ESTE MAIL
 <tr>
 <td style="padding:20px 40px;">
 <p style="color:#d1d5db;font-size:15px;line-height:1.7;margin:0;">
-A continuaci&oacute;n le adjuntamos la factura del servicio CABLE/INTERNET,
-con vencimiento el d&iacute;a : <strong style="color:#ffffff;">%s</strong>
+%s
 </p>
 </td>
 </tr>
@@ -189,14 +223,12 @@ con vencimiento el d&iacute;a : <strong style="color:#ffffff;">%s</strong>
 <!-- Invoice Number -->
 <tr>
 <td style="padding:5px 40px 20px 40px;">
-<table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#252525;border-radius:8px;border-left:4px solid #3b82f6;width:100%%;">
-<tr>
+<table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#252525;border-radius:8px;border-left:4px solid #3b82f6;width:100%%%%;"><tr>
 <td style="padding:15px 20px;">
 <p style="color:#9ca3af;font-size:12px;margin:0 0 4px 0;text-transform:uppercase;letter-spacing:1px;">N&uacute;mero de Factura</p>
 <p style="color:#ffffff;font-size:18px;font-weight:bold;margin:0;font-family:monospace;">%s</p>
 </td>
-</tr>
-</table>
+</tr></table>
 </td>
 </tr>
 
@@ -212,21 +244,7 @@ Ante cualquier consulta puede escribirnos a :<br>
 </td>
 </tr>
 
-<!-- Correction Notice -->
-<tr>
-<td style="padding:5px 40px 25px 40px;">
-<table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#fef3c7;border-radius:8px;border-left:4px solid #f59e0b;width:100%%;">
-<tr>
-<td style="padding:15px 20px;">
-<p style="color:#92400e;font-size:13px;font-weight:bold;margin:0 0 6px 0;">AVISO IMPORTANTE - Correcci&oacute;n de fecha</p>
-<p style="color:#78350f;font-size:13px;line-height:1.6;margin:0;">
-Le pedimos disculpas. Si recibi&oacute; una factura previamente con fecha de vencimiento 02/04/2026, le informamos que dicha fecha era incorrecta. La fecha de vencimiento correcta es: <strong>%s</strong>.
-</p>
-</td>
-</tr>
-</table>
-</td>
-</tr>
+%s
 
 <!-- Closing -->
 <tr>
@@ -255,11 +273,11 @@ Este es un env&iacute;o autom&aacute;tico. Por favor no responda este correo.
 </tr>
 </table>
 </body>
-</html>`, greeting, dueDateStr, invoiceNumber, dueDateStr)
+</html>`, headerTitle, greeting, bodyText, invoiceNumber, apologyHTML)
 }
 
 // buildInvoiceText generates the plain text fallback body.
-func buildInvoiceText(clientName, invoiceNumber, dueDate string) string {
+func buildInvoiceText(clientName, invoiceNumber, dueDate string, tmpl *models.EmailTemplate) string {
 	dueDateStr := dueDate
 
 	greeting := "Estimado Sr/a."
@@ -267,27 +285,38 @@ func buildInvoiceText(clientName, invoiceNumber, dueDate string) string {
 		greeting = fmt.Sprintf("Estimado Sr/a. %s", clientName)
 	}
 
-	return fmt.Sprintf(`FACTURA MENSUAL VIDEO DIGITAL S.R.L
+	header := "FACTURA MENSUAL VIDEO DIGITAL S.R.L"
+	if tmpl != nil && tmpl.Subject != "" {
+		header = tmpl.Subject
+	}
+
+	body := fmt.Sprintf("A continuacion le adjuntamos la factura del servicio CABLE/INTERNET,\ncon vencimiento el dia : %s", dueDateStr)
+	if tmpl != nil && tmpl.BodyText != "" {
+		body = fmt.Sprintf("%s\nVencimiento: %s", tmpl.BodyText, dueDateStr)
+	}
+
+	apology := ""
+	if tmpl != nil && tmpl.ApologyText != "" {
+		apology = fmt.Sprintf("\nAVISO IMPORTANTE:\n%s\n", tmpl.ApologyText)
+	}
+
+	return fmt.Sprintf(`%s
 
 POR FAVOR NO RESPONDA ESTE MAIL
 
 %s
 
-A continuacion le adjuntamos la factura del servicio CABLE/INTERNET,
-con vencimiento el dia : %s
+%s
 
 Numero de Factura: %s
 
 Ante cualquier consulta puede escribirnos a :
 clientes@videodigital.com.ar o ventas@videodigital.com.ar
-
-AVISO IMPORTANTE - Correccion de fecha:
-Le pedimos disculpas. Si recibio una factura previamente con fecha de vencimiento 02/04/2026, le informamos que dicha fecha era incorrecta. La fecha de vencimiento correcta es: %s.
-
+%s
 Saludos Cordiales
 
 Video Digital S.R.L
 
 ---
-Este es un envio automatico. Por favor no responda este correo.`, greeting, dueDateStr, invoiceNumber, dueDateStr)
+Este es un envio automatico. Por favor no responda este correo.`, header, greeting, body, invoiceNumber, apology)
 }

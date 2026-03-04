@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nwaples/rardecode/v2"
 
+	"hardsend/config"
 	"hardsend/database"
 	"hardsend/models"
 	"hardsend/parser"
@@ -28,16 +30,18 @@ import (
 type UploadHandler struct {
 	db       *database.DB
 	pool     *workers.Pool
+	cfg      *config.Config
 	clientDB *parser.ClientDB
 	tempDir  string
 	mu       sync.RWMutex
 }
 
 // NewUploadHandler creates a new upload handler.
-func NewUploadHandler(db *database.DB, pool *workers.Pool, tempDir string) *UploadHandler {
+func NewUploadHandler(db *database.DB, pool *workers.Pool, cfg *config.Config, tempDir string) *UploadHandler {
 	return &UploadHandler{
 		db:       db,
 		pool:     pool,
+		cfg:      cfg,
 		clientDB: parser.NewClientDB(),
 		tempDir:  tempDir,
 	}
@@ -137,10 +141,30 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse email template from form (optional JSON)
+	var emailTemplate *models.EmailTemplate
+	templateJSON := r.FormValue("email_template")
+	if templateJSON != "" {
+		emailTemplate = &models.EmailTemplate{}
+		if err := json.Unmarshal([]byte(templateJSON), emailTemplate); err != nil {
+			log.Printf("[Upload] Invalid email_template JSON: %v", err)
+			emailTemplate = nil
+		}
+	}
+
+	// Parse daily limit (optional, default from config)
+	dailyLimitStr := r.FormValue("daily_limit")
+	if dailyLimitStr != "" {
+		if dl, err := strconv.Atoi(dailyLimitStr); err == nil && dl > 0 {
+			h.cfg.DailyLimit = dl
+			log.Printf("[Upload] Daily limit set to %d from frontend", dl)
+		}
+	}
+
 	h.pool.SetCurrentJobID(jobID)
 
 	// Process files in background
-	go h.processFiles(jobID, files, dueDate)
+	go h.processFiles(jobID, files, dueDate, emailTemplate)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -151,7 +175,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 }
 
 // processFiles processes uploaded files (ZIP or PDFs).
-func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader, dueDate string) {
+func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader, dueDate string, template *models.EmailTemplate) {
 	var pdfFiles []pdfFileInfo
 
 	clientDB := h.getClientDB()
@@ -302,6 +326,7 @@ func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader
 			JobID:      jobID,
 			ClientName: clientName,
 			DueDate:    dueDate,
+			Template:   template,
 		})
 		queued++
 	}

@@ -10,6 +10,8 @@ import {
     XCircle,
     Loader2,
     Calendar,
+    Settings,
+    Gauge,
 } from 'lucide-react'
 
 function Dropzone({ onUploadComplete }) {
@@ -19,6 +21,10 @@ function Dropzone({ onUploadComplete }) {
     const [selectedFiles, setSelectedFiles] = useState([])
     const [txtFile, setTxtFile] = useState(null)
     const [dueDate, setDueDate] = useState('')
+    const [dailyLimit, setDailyLimit] = useState('')
+    const [emailSubject, setEmailSubject] = useState('FACTURA MENSUAL VIDEO DIGITAL S.R.L')
+    const [emailBody, setEmailBody] = useState('Se adjunta la factura mensual correspondiente al servicio de Cable e Internet de VIDEO DIGITAL S.R.L.')
+    const [apologyText, setApologyText] = useState('')
 
     const onDrop = useCallback((acceptedFiles) => {
         const txtFiles = acceptedFiles.filter(f =>
@@ -86,6 +92,17 @@ function Dropzone({ onUploadComplete }) {
                 const formatted = `${day}/${month}/${year}`
                 formData.append('due_date', formatted)
             }
+
+            // Add daily limit (required)
+            formData.append('daily_limit', dailyLimit.toString())
+
+            // Add email template as JSON
+            const template = {
+                subject: emailSubject,
+                body_text: emailBody,
+                apology_text: apologyText,
+            }
+            formData.append('email_template', JSON.stringify(template))
 
             const res = await fetch('/api/upload', {
                 method: 'POST',
@@ -265,11 +282,104 @@ function Dropzone({ onUploadComplete }) {
                         )}
                     </div>
 
+                    {/* Daily Limit & Email Config */}
+                    <div className="mt-4 p-3 rounded-lg bg-surface-800/40 border border-surface-700/30">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="p-2 rounded-lg bg-hardsend-500/10">
+                                <Gauge className="w-4 h-4 text-hardsend-400" />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-surface-300 text-xs font-medium block mb-1">
+                                    Límite diario de envío *
+                                </label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={50000}
+                                    value={dailyLimit}
+                                    onChange={(e) => setDailyLimit(e.target.value === '' ? '' : parseInt(e.target.value) || '')}
+                                    placeholder="Ej: 500, 1000, 1500..."
+                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
+                                        text-surface-200 text-sm placeholder:text-surface-600
+                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
+                                        transition-all duration-200"
+                                    id="daily-limit-input"
+                                />
+                            </div>
+                        </div>
+                        {dailyLimit ? (
+                            <p className="text-xs text-surface-500 ml-11">
+                                El sistema pausará automáticamente al alcanzar {Number(dailyLimit).toLocaleString()} envíos diarios y continuará al día siguiente.
+                            </p>
+                        ) : (
+                            <p className="text-xs text-orange-400 ml-11">
+                                ⚠️ Campo obligatorio — Defina cuántos emails enviar por día
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Email Template Config */}
+                    <div className="mt-4 p-3 rounded-lg bg-surface-800/40 border border-surface-700/30">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="p-2 rounded-lg bg-blue-500/10">
+                                <Settings className="w-4 h-4 text-blue-400" />
+                            </div>
+                            <span className="text-surface-300 text-xs font-medium">Configuración del Email</span>
+                        </div>
+
+                        <div className="space-y-3 ml-11">
+                            <div>
+                                <label className="text-surface-400 text-xs block mb-1">Asunto</label>
+                                <input
+                                    type="text"
+                                    value={emailSubject}
+                                    onChange={(e) => setEmailSubject(e.target.value)}
+                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
+                                        text-surface-200 text-sm
+                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
+                                        transition-all duration-200"
+                                    id="email-subject-input"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-surface-400 text-xs block mb-1">Texto del cuerpo</label>
+                                <textarea
+                                    value={emailBody}
+                                    onChange={(e) => setEmailBody(e.target.value)}
+                                    rows={3}
+                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
+                                        text-surface-200 text-sm resize-none
+                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
+                                        transition-all duration-200"
+                                    id="email-body-input"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-surface-400 text-xs block mb-1">
+                                    Texto de disculpa <span className="text-surface-600">(opcional)</span>
+                                </label>
+                                <textarea
+                                    value={apologyText}
+                                    onChange={(e) => setApologyText(e.target.value)}
+                                    rows={2}
+                                    placeholder="Dejar vacío si no aplica"
+                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
+                                        text-surface-200 text-sm resize-none placeholder:text-surface-600
+                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
+                                        transition-all duration-200"
+                                    id="email-apology-input"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Upload Button */}
                     <button
                         onClick={handleUpload}
-                        disabled={uploading || !dueDate}
-                        className={`w-full flex items-center justify-center gap-2 mt-3 ${!dueDate ? 'btn-primary opacity-50 cursor-not-allowed' : 'btn-primary'}`}
+                        disabled={uploading || !dueDate || !dailyLimit}
+                        className={`w-full flex items-center justify-center gap-2 mt-3 ${(!dueDate || !dailyLimit) ? 'btn-primary opacity-50 cursor-not-allowed' : 'btn-primary'}`}
                     >
                         {uploading ? (
                             <>

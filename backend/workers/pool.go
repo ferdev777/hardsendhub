@@ -22,13 +22,14 @@ import (
 type Pool struct {
 	cfg            *config.Config
 	db             *database.DB
-	emailClient    email.EmailSender // Changed to interface for professionalism
+	emailClient    email.EmailSender
 	hub            *websocket.Hub
 	circuitBreaker *CircuitBreaker
 	jobChan        chan models.InvoiceJob
 	wg             sync.WaitGroup
 	activeWorkers  int64
 	currentJobID   string
+	paused         int32 // atomic: 1 = paused
 	mu             sync.RWMutex
 }
 
@@ -103,12 +104,26 @@ func (p *Pool) worker(id int) {
 	log.Printf("[WorkerPool] Worker %d started", id)
 
 	for job := range p.jobChan {
+		// Check daily limit before processing
+		for !p.db.CanSendToday(p.cfg.DailyLimit) {
+			atomic.StoreInt32(&p.paused, 1)
+			log.Printf("[Worker %d] Daily limit reached (%d). Paused until tomorrow.", id, p.cfg.DailyLimit)
+			// Sleep 5 minutes and recheck (date change resets count)
+			time.Sleep(5 * time.Minute)
+		}
+		atomic.StoreInt32(&p.paused, 0)
+
 		atomic.AddInt64(&p.activeWorkers, 1)
 		p.processInvoice(job)
 		atomic.AddInt64(&p.activeWorkers, -1)
 	}
 
 	log.Printf("[WorkerPool] Worker %d stopped", id)
+}
+
+// IsPaused returns true if workers are paused (daily limit reached).
+func (p *Pool) IsPaused() bool {
+	return atomic.LoadInt32(&p.paused) == 1
 }
 
 // processInvoice handles sending a single invoice email with retry logic and context timeouts.
@@ -136,7 +151,7 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 		if p.emailClient == nil {
 			err = fmt.Errorf("email service is not initialized on the server (check API keys)")
 		} else {
-			err = p.emailClient.SendInvoiceEmail(ctx, invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName, invoice.ID, job.DueDate)
+			err = p.emailClient.SendInvoiceEmail(ctx, invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName, invoice.ID, job.DueDate, job.Template)
 		}
 		cancel()
 
@@ -144,6 +159,7 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 			// Success
 			p.circuitBreaker.RecordSuccess()
 			_ = p.db.UpdateInvoiceStatus(invoice.ID, models.InvoiceStatusSuccess, nil, attempt)
+			_, _ = p.db.IncrementDailySendCount(p.cfg.DailyLimit)
 			log.Printf("[Worker] Successfully sent invoice %s to %s (attempt %d)",
 				invoice.InvoiceNumber, invoice.RecipientEmail, attempt)
 			return
@@ -197,10 +213,18 @@ func (p *Pool) broadcastMetrics() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	var currentActiveSeconds int
+	var lastKnownJobID string
+
 	for range ticker.C {
 		jobID := p.GetCurrentJobID()
 		if jobID == "" {
 			continue
+		}
+
+		if jobID != lastKnownJobID {
+			currentActiveSeconds = 0
+			lastKnownJobID = jobID
 		}
 
 		metrics, err := p.db.GetJobMetrics(jobID)
@@ -210,6 +234,26 @@ func (p *Pool) broadcastMetrics() {
 
 		metrics.ActiveWorkers = p.GetActiveWorkers()
 		metrics.CircuitBreakerState = p.GetCircuitBreakerState()
+		metrics.Paused = p.IsPaused()
+
+		jobFinished := metrics.ProcessedCount > 0 && metrics.ProcessedCount >= metrics.TotalFiles && metrics.ActiveWorkers == 0
+
+		// Timer — only ticks if actively processing and NOT paused
+		if !jobFinished && !metrics.Paused {
+			currentActiveSeconds++
+		}
+		metrics.ElapsedSeconds = currentActiveSeconds
+
+		// Daily tracking
+		dailySent, dailyMax, _ := p.db.GetDailySendCount()
+		metrics.DailySent = dailySent
+
+		// Prioritizar el límite explícito configurado por el usuario en esta corrida.
+		// Solo usar el de la BD si por alguna razón no se mandó config.
+		metrics.DailyMax = p.cfg.DailyLimit
+		if metrics.DailyMax <= 0 && dailyMax > 0 {
+			metrics.DailyMax = dailyMax
+		}
 
 		p.hub.Broadcast(metrics)
 	}

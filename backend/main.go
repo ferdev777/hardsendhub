@@ -66,7 +66,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(cfg)
-	uploadHandler := handlers.NewUploadHandler(db, pool, cfg.TempDir)
+	uploadHandler := handlers.NewUploadHandler(db, pool, cfg, cfg.TempDir)
 	jobsHandler := handlers.NewJobsHandler(db)
 	webhookHandler := handlers.NewWebhookHandler(db, hub)
 	missingEmailsHandler := handlers.NewMissingEmailsHandler(db)

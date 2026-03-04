@@ -12,6 +12,9 @@ import {
     MailOpen,
     Eraser,
     Flag,
+    Timer,
+    Gauge,
+    PauseCircle,
 } from 'lucide-react'
 
 function StatsRow({ metrics, connected }) {
@@ -29,6 +32,18 @@ function StatsRow({ metrics, connected }) {
     const bounceCount = metrics?.bounce_count || 0
     const complaintCount = metrics?.complaint_count || 0
     const openRate = successCount > 0 ? (opendCount / successCount) * 100 : 0
+
+    // Timer & Daily
+    const elapsed = metrics?.elapsed_seconds || 0
+    const dailySent = metrics?.daily_sent || 0
+    const dailyMax = metrics?.daily_max || 1500
+    const paused = metrics?.paused || false
+    const formatTime = (s) => {
+        const h = Math.floor(s / 3600)
+        const m = Math.floor((s % 3600) / 60)
+        const sec = s % 60
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+    }
 
     const stats = [
         {
@@ -86,6 +101,22 @@ function StatsRow({ metrics, connected }) {
             colorClass: 'stat-card-purple',
             iconColor: 'text-purple-400',
             subtext: 'Reportes recibidos',
+        },
+        {
+            label: 'Tiempo',
+            value: formatTime(elapsed),
+            icon: Timer,
+            colorClass: 'stat-card-blue',
+            iconColor: 'text-sky-400',
+            subtext: paused ? '⏸️ Pausado (límite diario)' : (activeWorkers > 0 ? '⏱️ Enviando...' : 'Finalizado'),
+        },
+        {
+            label: 'Envío del día',
+            value: `${dailySent.toLocaleString()}`,
+            icon: paused ? PauseCircle : Gauge,
+            colorClass: paused ? 'stat-card-orange' : 'stat-card-green',
+            iconColor: paused ? 'text-orange-400' : 'text-emerald-400',
+            subtext: `Límite: ${dailyMax.toLocaleString()} / día`,
         },
     ]
 

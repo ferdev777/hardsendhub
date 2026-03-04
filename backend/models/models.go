@@ -51,6 +51,14 @@ type InvoiceJob struct {
 	JobID      string
 	ClientName string
 	DueDate    string
+	Template   *EmailTemplate
+}
+
+// EmailTemplate holds configurable email content from the frontend.
+type EmailTemplate struct {
+	Subject     string `json:"subject"`
+	BodyText    string `json:"body_text"`
+	ApologyText string `json:"apology_text"` // optional
 }
 
 // MetricsUpdate is the WebSocket payload sent to the frontend every second.
@@ -67,6 +75,10 @@ type MetricsUpdate struct {
 	OpenedCount          int     `json:"opened_count"`
 	BounceCount          int     `json:"bounce_count"`
 	ComplaintCount       int     `json:"complaint_count"`
+	ElapsedSeconds       int     `json:"elapsed_seconds"`
+	DailySent            int     `json:"daily_sent"`
+	DailyMax             int     `json:"daily_max"`
+	Paused               bool    `json:"paused"`
 }
 
 // LoginRequest represents the login API payload.

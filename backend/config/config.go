@@ -24,6 +24,7 @@ type Config struct {
 	WorkerCount int
 	MaxRetries  int
 	RetryDelay  time.Duration
+	DailyLimit  int
 
 	// Circuit breaker settings
 	CBFailureThreshold int
@@ -56,9 +57,10 @@ func Load() *Config {
 		AdminPassword:      getEnv("ADMIN_PASSWORD", "modeloxvz91"),
 		JWTSecret:          getEnv("JWT_SECRET", "hardsend-super-secret-key-2026-devrow"),
 		JWTExpiry:          parseDuration(getEnv("JWT_EXPIRY", "24h")),
-		WorkerCount:        parseInt(getEnv("WORKER_COUNT", "50")),
+		WorkerCount:        parseInt(getEnv("WORKER_COUNT", "1")),
 		MaxRetries:         parseInt(getEnv("MAX_RETRIES", "3")),
 		RetryDelay:         parseDuration(getEnv("RETRY_DELAY", "60s")),
+		DailyLimit:         parseInt(getEnv("DAILY_LIMIT", "0")), // 0 = must be set from frontend
 		CBFailureThreshold: parseInt(getEnv("CB_FAILURE_THRESHOLD", "5")),
 		CBRecoveryTimeout:  parseDuration(getEnv("CB_RECOVERY_TIMEOUT", "300s")),
 		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),

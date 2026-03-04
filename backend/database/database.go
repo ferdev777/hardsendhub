@@ -113,6 +113,16 @@ func (db *DB) migrate() error {
 		}
 	}
 
+	// Daily send counts table
+	_, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS daily_send_counts (
+		date TEXT PRIMARY KEY,
+		sent_count INTEGER NOT NULL DEFAULT 0,
+		daily_limit INTEGER NOT NULL DEFAULT 1500
+	)`)
+	if err != nil {
+		return fmt.Errorf("failed to create daily_send_counts: %w", err)
+	}
+
 	log.Println("[DB] Migrations completed successfully")
 	return nil
 }
@@ -200,7 +210,8 @@ func (db *DB) UpdateInvoiceStatus(invoiceID, status string, errorReason *string,
 	return err
 }
 
-// CheckInvoiceSentThisMonth checks if an invoice number already has SUCCESS status this month.
+// CheckInvoiceSentThisMonth checks if an invoice number already has SUCCESS status this month
+// AND has NOT bounced. Bounced invoices are allowed to be resent.
 func (db *DB) CheckInvoiceSentThisMonth(invoiceNumber string) (bool, error) {
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
@@ -208,7 +219,7 @@ func (db *DB) CheckInvoiceSentThisMonth(invoiceNumber string) (bool, error) {
 	var count int
 	err := db.conn.QueryRow(
 		`SELECT COUNT(*) FROM invoices
-		 WHERE invoice_number = ? AND status = 'SUCCESS' AND last_attempt_at >= ?`,
+		 WHERE invoice_number = ? AND status = 'SUCCESS' AND bounced = 0 AND last_attempt_at >= ?`,
 		invoiceNumber, startOfMonth,
 	).Scan(&count)
 	if err != nil {
@@ -559,4 +570,40 @@ func (db *DB) ResolveAllMissingEmails(from, to time.Time) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// --- Daily Send Count Operations ---
+
+// GetDailySendCount returns how many emails were sent today.
+func (db *DB) GetDailySendCount() (int, int, error) {
+	today := time.Now().Format("2006-01-02")
+	var count, limit int
+	err := db.conn.QueryRow("SELECT sent_count, daily_limit FROM daily_send_counts WHERE date = ?", today).Scan(&count, &limit)
+	if err != nil {
+		return 0, 0, nil // no record yet = 0 sent
+	}
+	return count, limit, nil
+}
+
+// IncrementDailySendCount atomically increments today's send count.
+func (db *DB) IncrementDailySendCount(dailyLimit int) (int, error) {
+	today := time.Now().Format("2006-01-02")
+	_, err := db.conn.Exec(
+		`INSERT INTO daily_send_counts (date, sent_count, daily_limit)
+		 VALUES (?, 1, ?)
+		 ON CONFLICT(date) DO UPDATE SET sent_count = sent_count + 1`,
+		today, dailyLimit,
+	)
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	db.conn.QueryRow("SELECT sent_count FROM daily_send_counts WHERE date = ?", today).Scan(&count)
+	return count, nil
+}
+
+// CanSendToday checks if we haven't hit the daily limit.
+func (db *DB) CanSendToday(dailyLimit int) bool {
+	count, _, _ := db.GetDailySendCount()
+	return count < dailyLimit
 }
