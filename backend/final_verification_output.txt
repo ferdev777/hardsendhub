@@ -1,0 +1,45 @@
+﻿1´©ÅÔâú Descargando estados desde Resend (├║ltimas 48hs)...
+P├ígina 1 terminada, total emails en memoria: 100
+P├ígina 2 terminada, total emails en memoria: 200
+P├ígina 3 terminada, total emails en memoria: 300
+P├ígina 4 terminada, total emails en memoria: 400
+P├ígina 5 terminada, total emails en memoria: 498
+P├ígina 6 terminada, total emails en memoria: 598
+P├ígina 7 terminada, total emails en memoria: 696
+P├ígina 8 terminada, total emails en memoria: 793
+P├ígina 9 terminada, total emails en memoria: 889
+P├ígina 10 terminada, total emails en memoria: 987
+P├ígina 11 terminada, total emails en memoria: 1082
+P├ígina 12 terminada, total emails en memoria: 1182
+P├ígina 13 terminada, total emails en memoria: 1282
+P├ígina 14 terminada, total emails en memoria: 1379
+P├ígina 15 terminada, total emails en memoria: 1474
+P├ígina 16 terminada, total emails en memoria: 1572
+P├ígina 17 terminada, total emails en memoria: 1670
+P├ígina 18 terminada, total emails en memoria: 1769
+P├ígina 19 terminada, total emails en memoria: 1862
+P├ígina 20 terminada, total emails en memoria: 1959
+P├ígina 21 terminada, total emails en memoria: 2058
+P├ígina 22 terminada, total emails en memoria: 2156
+P├ígina 23 terminada, total emails en memoria: 2254
+P├ígina 24 terminada, total emails en memoria: 2349
+P├ígina 25 terminada, total emails en memoria: 2446
+P├ígina 26 terminada, total emails en memoria: 2544
+P├ígina 27 terminada, total emails en memoria: 2640
+P├ígina 28 terminada, total emails en memoria: 2736
+P├ígina 29 terminada, total emails en memoria: 2833
+P├ígina 30 terminada, total emails en memoria: 2929
+P├ígina 31 terminada, total emails en memoria: 3027
+P├ígina 32 terminada, total emails en memoria: 3123
+P├ígina 33 terminada, total emails en memoria: 3221
+P├ígina 34 terminada, total emails en memoria: 3318
+P├ígina 35 terminada, total emails en memoria: 3409
+P├ígina 36 terminada, total emails en memoria: 3503
+Ô£ö Se obtuvieron 3555 estados desde Resend.
+2´©ÅÔâú Consultando base de datos Hardsend...
+
+=======================================
+REPORTE GENERADO: C:\Users\fer\Downloads\facturas_verificadas_resend.csv
+Total procesados: 10516
+Confirmados como EXITOSOS en Resend: 3331
+=======================================

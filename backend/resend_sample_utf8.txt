@@ -1,0 +1,2 @@
+﻿Response keys: object, has_more, data, 
+Sample email: map[bcc:[] cc:[] created_at:2026-03-12 03:34:48.724857+00 from:Video Digital S.R.L <notificaciones@facturasvideodigital.com> id:d7e3e2b0-a9f9-408d-ae2e-bb237d78b440 last_event:delivered reply_to:[] scheduled_at:<nil> subject:FACTURA MENSUAL VIDEO DIGITAL S.R.L to:[dubiedvalerian@gmail.com]]

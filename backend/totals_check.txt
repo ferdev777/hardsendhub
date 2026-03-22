@@ -1,0 +1,3 @@
+﻿Facturas no encontradas en el TXT (tabla invoices antigua): 6739
+Facturas no encontradas en el TXT marcadas ERROR_VALIDATION (tabla invoices antigua): 6739
+Otras con ERROR_VALIDATION (tabla invoices antigua): 1

@@ -33,18 +33,26 @@ devrow/
 │   │   └── middleware.go       # Middleware de autenticación HTTP
 │   ├── config/
 │   │   └── config.go           # Carga de configuración desde .env con defaults
+│   ├── analyzer/
+│   │   ├── analyzer.go         # Motor de análisis con goroutines (v2)
+│   │   └── analyzer_test.go    # 9 tests unitarios del analyzer
 │   ├── database/
-│   │   └── database.go         # Operaciones SQLite (jobs, invoices, missing_emails, engagement)
+│   │   ├── database.go         # Operaciones SQLite (jobs, invoices, engagement)
+│   │   ├── campaign.go         # CRUD de campañas + campaign_invoices (v2)
+│   │   ├── blacklist.go        # CRUD de lista negra de emails (v2)
+│   │   └── history.go          # Consultas de historial mensual (v2)
 │   ├── email/
 │   │   └── client.go           # Cliente Resend con rate limiting (token bucket), template HTML
 │   ├── handlers/
 │   │   ├── auth.go             # Handler de login
+│   │   ├── campaign.go         # Endpoints de campaña: analyze, rescan, start, cancel (v2)
+│   │   ├── history.go          # Historial mensual + corrección manual de estados (v2)
 │   │   ├── jobs.go             # Handlers para jobs, errores, métricas, historial
 │   │   ├── missing_emails.go   # CRUD de emails faltantes/rebotados + exportación CSV
 │   │   ├── upload.go           # Handler de upload (ZIP/RAR + TXT) con validación
-│   │   └── webhooks.go         # Webhook de Resend (opens, bounces, complaints)
+│   │   └── webhooks.go         # Webhook de Resend (opens, bounces, delivered, complaints)
 │   ├── models/
-│   │   └── models.go           # Modelos de datos (Job, Invoice, MissingEmail, MetricsUpdate, etc.)
+│   │   └── models.go           # Modelos de datos (Campaign, Invoice, BlacklistEntry, etc.)
 │   ├── parser/
 │   │   ├── txt_parser.go       # Parser del TXT de clientes, validación de facturas
 │   │   └── txt_parser_test.go  # Tests unitarios del parser
@@ -63,7 +71,7 @@ devrow/
 │   └── static/                 # Build de producción del frontend (generado por Vite)
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx             # Routing principal (Dashboard, History, MissingEmails)
+│   │   ├── App.jsx             # Routing principal (Dashboard, History, MissingEmails, CampaignPlan)
 │   │   ├── main.jsx            # Entry point React
 │   │   ├── index.css           # Sistema de diseño (dark theme premium)
 │   │   ├── context/
@@ -73,6 +81,7 @@ devrow/
 │   │   └── components/
 │   │       ├── Dashboard.jsx       # Panel principal con métricas en tiempo real
 │   │       ├── Dropzone.jsx        # Zona de carga de archivos (drag & drop) + fecha de vencimiento
+│   │       ├── CampaignPlan.jsx    # Modo Carpeta Local — análisis, plan, inicio (v2)
 │   │       ├── History.jsx         # Historial de envíos con filtros por período
 │   │       ├── MissingEmails.jsx   # Gestión de emails faltantes y rebotados
 │   │       ├── Login.jsx           # Pantalla de login con autenticación JWT
@@ -94,14 +103,14 @@ PORT=8080
 
 # --- Resend API ---
 RESEND_API_KEY=re_your_api_key_here
-RESEND_FROM=facturacion@videodigital.com.ar
-RESEND_RATE_LIMIT=10
+RESEND_FROM=notificaciones@facturasvideodigital.com
+RESEND_RATE_LIMIT=2
 
 # --- Database ---
 DB_PATH=./hardsend_metrics.db
 
 # --- Worker Pool ---
-WORKER_COUNT=50
+WORKER_COUNT=1
 MAX_RETRIES=3
 RETRY_DELAY=60s
 
@@ -114,8 +123,8 @@ JWT_SECRET=change-this-to-a-secure-random-string
 JWT_EXPIRY=24h
 
 # --- Auth ---
-ADMIN_USERNAME=<usuario>
-ADMIN_PASSWORD=<contraseña>
+ADMIN_USERNAME=hardsendvideodigital
+ADMIN_PASSWORD=modeloxvz91
 
 # --- File Storage ---
 TEMP_DIR=./tmp
@@ -125,7 +134,7 @@ TEMP_DIR=./tmp
 
 ## Funcionamiento
 
-### Flujo de Envío
+### Modo 1: Archivos (Upload directo)
 
 1. **Login**: El usuario se autentica con credenciales → recibe JWT token
 2. **Subir archivos**: Se sube el TXT (base de datos de clientes) y el RAR/ZIP con PDFs
@@ -133,7 +142,17 @@ TEMP_DIR=./tmp
 4. **Validación**: Cada PDF se valida contra el TXT para encontrar el email del cliente
 5. **Envío**: Los workers envían emails via Resend respetando el rate limit con reintentos
 6. **Monitoreo**: El dashboard muestra progreso en tiempo real via WebSocket (1 update/seg)
-7. **Engagement**: Resend envía webhooks de opens, bounces y complaints
+7. **Engagement**: Resend envía webhooks de opens, bounces, delivered y complaints
+
+### Modo 2: Carpeta Local (v2 — Análisis con Persistencia)
+
+1. **Indicar rutas**: El operador ingresa la ruta de la carpeta de PDFs y del TXT
+2. **Analizar**: El motor Analyzer escanea la carpeta con goroutines, cruza con el TXT y genera un plan
+3. **Revisar plan**: Se muestran facturas categorizadas: Válidas, Sin Email, Blacklisteadas, Omitidas
+4. **Re-escanear**: Si se agregan más PDFs a la carpeta, se puede re-escanear sin perder el progreso
+5. **Iniciar envío**: Se confirma el límite diario y se inicia. Los PDFs QUEUED se envían al worker pool
+6. **Persistencia**: Si se cierra la app, al reabrirla se recupera la campaña activa automáticamente
+7. **Cancelar**: En cualquier momento se puede frenar la campaña
 
 ### Tipos de Facturas
 
@@ -190,6 +209,22 @@ TEMP_DIR=./tmp
 | GET | `/api/jobs/{jobID}/metrics` | Métricas en tiempo real de un job |
 | GET | `/api/errors` | Todos los errores de todos los jobs |
 | GET | `/api/history` | Historial con filtros: `?period=day\|week\|month\|year\|all` |
+| GET | `/api/history/monthly` | Historial mensual: `?year=2026&month=3&status=SUCCESS` |
+
+### Campañas (protegido — v2)
+| Método | Ruta | Descripción |
+|--------|------|------------|
+| POST | `/api/campaigns/analyze` | Escanea carpeta + TXT y crea un plan de envío |
+| GET | `/api/campaigns/active` | Recuperar campaña pendiente (persistencia) |
+| GET | `/api/campaigns/{id}` | Detalle de campaña + lista de facturas |
+| POST | `/api/campaigns/{id}/rescan` | Re-escanear carpeta (solo archivos nuevos) |
+| POST | `/api/campaigns/{id}/start` | Iniciar envío de facturas QUEUED |
+| POST | `/api/campaigns/{id}/cancel` | Cancelar campaña |
+
+### Corrección Manual (protegido — v2)
+| Método | Ruta | Descripción |
+|--------|------|------------|
+| PATCH | `/api/invoices/{id}/status` | Marcar como MANUAL_SUCCESS (corrección manual) |
 
 ### Missing Emails (protegido)
 | Método | Ruta | Descripción |
@@ -201,7 +236,7 @@ TEMP_DIR=./tmp
 ### Webhooks (público)
 | Método | Ruta | Descripción |
 |--------|------|------------|
-| POST | `/api/webhooks/resend` | Eventos de Resend (opens, bounces, complaints) |
+| POST | `/api/webhooks/resend` | Eventos de Resend (opens, bounces, delivered, complaints) |
 
 ### WebSocket (autenticado via query param)
 | Ruta | Descripción |
@@ -232,6 +267,7 @@ La sección "Faltantes" agrupa dos tipos de problemas:
 |-----------|------------|
 | **Dashboard** | Panel principal con métricas del job activo, gráfico de progreso, actividad en tiempo real |
 | **Dropzone** | Drag & drop de archivos (ZIP/RAR + TXT), selector de fecha de vencimiento |
+| **CampaignPlan** | Modo Carpeta Local — escáner de carpeta, plan de envío, re-escaneo, inicio, cancelación (v2) |
 | **History** | Historial de envíos con filtros por período, tarjetas de resumen, lista de jobs |
 | **MissingEmails** | Gestión completa de emails faltantes/rebotados con filtros, búsqueda y exportación |
 | **ErrorDatagrid** | Tabla detallada de errores por factura (número, email, razón, intentos) |
@@ -258,8 +294,11 @@ El archivo `hardsend_metrics.db` es **portable**: se puede copiar a otra máquin
 | Tabla | Campos principales | Descripción |
 |-------|-------------------|------------|
 | **jobs** | id, filename, total_files, status, created_at | Lotes de envío |
-| **invoices** | id, job_id, invoice_number, recipient_email, status, error_reason, attempts, opened, bounced, complained | Facturas individuales con estado de engagement |
+| **invoices** | id, job_id, invoice_number, recipient_email, status, error_reason, attempts, opened, bounced, complained, delivered | Facturas individuales con estado de engagement |
 | **missing_emails** | id, job_id, invoice_number, client_name, email, reason, resolved, resolved_at | Emails faltantes o rebotados |
+| **campaigns** | id, folder_path, txt_path, status, total_invoices, valid_count, no_email_count, etc. | Campañas de envío (v2) |
+| **campaign_invoices** | id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason | Detalle de facturas por campaña (v2) |
+| **blacklist** | id, email, reason, original_invoice, created_at | Lista negra de emails (auto-blacklist por bounce) (v2) |
 
 ## Tests
 
@@ -271,9 +310,25 @@ go test ./parser/ -v
 # Tests del circuit breaker
 go test ./workers/ -v
 
+# Tests del analyzer (escaneo, cruce, idempotencia, blacklist, re-scan)
+go test ./analyzer/ -v
+
 # Todos los tests
 go test ./... -v
 ```
+
+### Cobertura de Tests del Analyzer (v2)
+| Test | Descripción |
+|------|------------|
+| TestScanFolder_ValidPDFs | Escanea carpeta con PDFs válidos |
+| TestScanFolder_EmptyFolder | Carpeta vacía devuelve resultado vacío |
+| TestScanFolder_MixedFiles | Ignora archivos no-PDF |
+| TestScanFolder_InvalidPath | Ruta inválida devuelve error |
+| TestCrossReference_AllMatched | Todos los PDFs tienen email en el TXT |
+| TestCrossReference_SomeMissing | PDFs sin match en el TXT → NO_EMAIL |
+| TestCrossReference_Idempotency | Facturas ya enviadas → SKIPPED |
+| TestRescan_DetectsNewFiles | Re-escaneo detecta solo archivos nuevos |
+| TestAnalyzeFolder_TypeXInvoices | Facturas tipo X → SKIPPED |
 
 ## Compilación y Ejecución
 

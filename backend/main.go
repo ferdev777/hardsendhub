@@ -68,8 +68,10 @@ func main() {
 	authHandler := handlers.NewAuthHandler(cfg)
 	uploadHandler := handlers.NewUploadHandler(db, pool, cfg, cfg.TempDir)
 	jobsHandler := handlers.NewJobsHandler(db)
-	webhookHandler := handlers.NewWebhookHandler(db, hub)
 	missingEmailsHandler := handlers.NewMissingEmailsHandler(db)
+	campaignHandler := handlers.NewCampaignHandler(db, pool, cfg)
+	historyHandler := handlers.NewHistoryHandler(db)
+	filesystemHandler := handlers.NewFilesystemHandler()
 
 	// Set up router
 	r := chi.NewRouter()
@@ -80,7 +82,7 @@ func main() {
 	r.Use(chimiddleware.RealIP)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:8080", "*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
@@ -89,7 +91,6 @@ func main() {
 
 	// Public routes
 	r.Post("/api/login", authHandler.Login)
-	r.Post("/api/webhooks/resend", webhookHandler.ResendWebhook)
 
 	// WebSocket route (auth via query param)
 	r.Get("/ws/metrics", hub.HandleWebSocket)
@@ -108,6 +109,23 @@ func main() {
 		r.Get("/api/missing-emails", missingEmailsHandler.GetMissingEmails)
 		r.Get("/api/missing-emails/export", missingEmailsHandler.ExportMissingEmails)
 		r.Post("/api/missing-emails/resolve", missingEmailsHandler.ResolveMissingEmails)
+
+		// Campaign routes
+		r.Post("/api/campaigns/analyze", campaignHandler.Analyze)
+		r.Get("/api/campaigns/active", campaignHandler.GetActive)
+		r.Get("/api/campaigns/{id}", campaignHandler.GetCampaign)
+		r.Post("/api/campaigns/{id}/rescan", campaignHandler.Rescan)
+		r.Post("/api/campaigns/{id}/start", campaignHandler.Start)
+		r.Post("/api/campaigns/{id}/cancel", campaignHandler.Cancel)
+
+		// Monthly history + manual correction routes + system
+		r.Get("/api/history/monthly", historyHandler.GetMonthly)
+		r.Patch("/api/invoices/{id}/status", historyHandler.UpdateInvoiceStatus)
+		r.Delete("/api/system/reset", historyHandler.ResetSystem)
+
+		// Filesystem browsing for folder picker
+		r.Get("/api/filesystem/browse", filesystemHandler.Browse)
+		r.Get("/api/filesystem/drives", filesystemHandler.Drives)
 	})
 
 	// Serve React static files

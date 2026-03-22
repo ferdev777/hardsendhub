@@ -85,11 +85,7 @@ func TestInvoiceJob_WithTemplate(t *testing.T) {
 			ID:            "inv-1",
 			InvoiceNumber: "B0002-00000001",
 		},
-		PDFPath:    "/tmp/test.pdf",
-		JobID:      "job-001",
-		ClientName: "PEREZ JUAN",
-		DueDate:    "15/03/2026",
-		Template:   tmpl,
+		Template: tmpl,
 	}
 
 	if job.Template == nil {
@@ -103,7 +99,6 @@ func TestInvoiceJob_WithTemplate(t *testing.T) {
 func TestInvoiceJob_NilTemplate(t *testing.T) {
 	job := InvoiceJob{
 		Invoice: Invoice{ID: "inv-1"},
-		JobID:   "job-001",
 	}
 
 	if job.Template != nil {

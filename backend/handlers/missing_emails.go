@@ -116,9 +116,10 @@ func (h *MissingEmailsHandler) ExportMissingEmails(w http.ResponseWriter, r *htt
 			estado = "Resuelto"
 		}
 		razon := "Sin email en TXT"
-		if item.Reason == "bounced" {
+		switch item.Reason {
+		case "bounced":
 			razon = "Email rebotó"
-		} else if item.Reason == "invalid_email" {
+		case "invalid_email":
 			razon = "Email inválido"
 		}
 		writer.Write([]string{

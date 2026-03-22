@@ -4,6 +4,26 @@ import (
 	"time"
 )
 
+// Campaign status constants.
+const (
+	CampaignStatusDraft     = "DRAFT"
+	CampaignStatusAnalyzing = "ANALYZING"
+	CampaignStatusReady     = "READY"
+	CampaignStatusSending   = "SENDING"
+	CampaignStatusPaused    = "PAUSED"
+	CampaignStatusCompleted = "COMPLETED"
+	CampaignStatusCancelled = "CANCELLED"
+)
+
+// Campaign invoice status constants (analysis result).
+const (
+	CampaignInvoiceStatusQueued    = "QUEUED"    // Has valid email, ready to send
+	CampaignInvoiceStatusNoEmail   = "NO_EMAIL"  // Not found in TXT
+	CampaignInvoiceStatusSkipped   = "SKIPPED"   // Type X or already sent this month
+	CampaignInvoiceStatusSent      = "SENT"      // Already dispatched to worker pool
+	CampaignInvoiceStatusCancelled = "CANCELLED" // Campaign was cancelled
+)
+
 // Job status constants.
 const (
 	JobStatusProcessing = "PROCESSING"
@@ -42,6 +62,7 @@ type Invoice struct {
 	Opened         bool       `json:"opened"`
 	Bounced        bool       `json:"bounced"`
 	Complained     bool       `json:"complained"`
+	Delivered      bool       `json:"delivered"`
 }
 
 // InvoiceJob is passed through worker channels for processing.
@@ -163,4 +184,84 @@ type MissingEmailSummary struct {
 type MissingEmailResponse struct {
 	Summary *MissingEmailSummary `json:"summary"`
 	Items   []MissingEmail       `json:"items"`
+}
+
+// --- Campaign Models ---
+
+// Campaign represents a batch analysis/send plan that persists across sessions.
+type Campaign struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	FolderPath       *string   `json:"folder_path"` // nil if created via upload mode
+	TxtPath          *string   `json:"txt_path"`    // nil if created via upload mode
+	DueDate          string    `json:"due_date"`
+	TemplateSubject  string    `json:"template_subject"`
+	TemplateBody     string    `json:"template_body"`
+	Status           string    `json:"status"`
+	TotalInvoices    int       `json:"total_invoices"`
+	ValidCount       int       `json:"valid_count"`
+	NoEmailCount     int       `json:"no_email_count"`
+	SkippedCount     int       `json:"skipped_count"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// CampaignInvoice represents a single PDF analyzed within a campaign.
+type CampaignInvoice struct {
+	ID            string  `json:"id"`
+	CampaignID    string  `json:"campaign_id"`
+	InvoiceNumber string  `json:"invoice_number"`
+	ClientName    string  `json:"client_name"`
+	Email         string  `json:"email"`
+	PDFPath       string  `json:"pdf_path"`
+	Status        string  `json:"status"` // QUEUED, NO_EMAIL, SKIPPED, SENT, CANCELLED
+	Reason        *string `json:"reason"` // Why it was skipped/no_email
+}
+
+// AnalyzeCampaignRequest is the request body for POST /api/campaigns/analyze.
+type AnalyzeCampaignRequest struct {
+	FolderPath  string         `json:"folder_path"`
+	TxtPath     string         `json:"txt_path"`
+	DueDate     string         `json:"due_date"`
+	ForceResend bool           `json:"force_resend"`
+	Template    *EmailTemplate `json:"template"`
+}
+
+// CampaignSummary is the response after analyzing a campaign.
+type CampaignSummary struct {
+	CampaignID  string `json:"campaign_id"`
+	Total       int    `json:"total"`
+	Valid       int    `json:"valid"`
+	NoEmail     int    `json:"no_email"`
+	Skipped     int    `json:"skipped"`
+	Status      string `json:"status"`
+	ElapsedMs   int64  `json:"elapsed_ms"`
+}
+
+// CampaignDetailResponse is the full campaign detail with invoice list.
+type CampaignDetailResponse struct {
+	Campaign *Campaign         `json:"campaign"`
+	Invoices []CampaignInvoice `json:"invoices"`
+}
+
+// --- Additional Invoice Status Constants ---
+
+const (
+	InvoiceStatusManualSuccess = "MANUAL_SUCCESS" // Manually corrected by operator
+	InvoiceStatusDelivered     = "DELIVERED"      // Confirmed delivery by Resend
+)
+
+// InvoiceHistoryRow is a single invoice with all status fields for the monthly history view.
+type InvoiceHistoryRow struct {
+	ID             string     `json:"id"`
+	InvoiceNumber  string     `json:"invoice_number"`
+	RecipientEmail string     `json:"recipient_email"`
+	Status         string     `json:"status"`
+	ErrorReason    *string    `json:"error_reason"`
+	Opened         bool       `json:"opened"`
+	Bounced        bool       `json:"bounced"`
+	Complained     bool       `json:"complained"`
+	Delivered      bool       `json:"delivered"`
+	LastAttemptAt  *time.Time `json:"last_attempt_at"`
+	JobFilename    string     `json:"job_filename"`
 }

@@ -134,12 +134,8 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read due date from form (MANDATORY)
+	// Read due date from form (OPTIONAL)
 	dueDate := r.FormValue("due_date")
-	if dueDate == "" {
-		http.Error(w, `{"error":"Debe ingresar la fecha de vencimiento antes de enviar."}`, http.StatusBadRequest)
-		return
-	}
 
 	// Parse email template from form (optional JSON)
 	var emailTemplate *models.EmailTemplate
@@ -161,10 +157,13 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse force resend flag (optional)
+	forceResend := r.FormValue("force_resend") == "true"
+
 	h.pool.SetCurrentJobID(jobID)
 
 	// Process files in background
-	go h.processFiles(jobID, files, dueDate, emailTemplate)
+	go h.processFiles(jobID, files, dueDate, emailTemplate, forceResend)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -175,7 +174,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 }
 
 // processFiles processes uploaded files (ZIP or PDFs).
-func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader, dueDate string, template *models.EmailTemplate) {
+func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader, dueDate string, template *models.EmailTemplate, forceResend bool) {
 	var pdfFiles []pdfFileInfo
 
 	clientDB := h.getClientDB()
@@ -294,21 +293,23 @@ func (h *UploadHandler) processFiles(jobID string, files []*multipart.FileHeader
 		}
 
 		// Check idempotency - skip if already sent this month
-		alreadySent, err := h.db.CheckInvoiceSentThisMonth(invoice.InvoiceNumber)
-		if err == nil && alreadySent {
-			reason := fmt.Sprintf("Factura %s ya enviada exitosamente este mes (omitida)", invoice.InvoiceNumber)
-			inv := &models.Invoice{
-				ID:             invoiceID,
-				JobID:          jobID,
-				InvoiceNumber:  invoice.InvoiceNumber,
-				RecipientEmail: invoice.RecipientEmail,
-				Status:         models.InvoiceStatusSuccess,
-				ErrorReason:    &reason,
-				Attempts:       0,
+		if !forceResend {
+			alreadySent, err := h.db.CheckInvoiceSentThisMonth(invoice.InvoiceNumber)
+			if err == nil && alreadySent {
+				reason := fmt.Sprintf("Factura %s ya enviada exitosamente este mes (omitida)", invoice.InvoiceNumber)
+				inv := &models.Invoice{
+					ID:             invoiceID,
+					JobID:          jobID,
+					InvoiceNumber:  invoice.InvoiceNumber,
+					RecipientEmail: invoice.RecipientEmail,
+					Status:         models.InvoiceStatusSuccess,
+					ErrorReason:    &reason,
+					Attempts:       0,
+				}
+				_ = h.db.CreateInvoice(inv)
+				log.Printf("[Upload] Skipped duplicate: %s", invoice.InvoiceNumber)
+				continue
 			}
-			_ = h.db.CreateInvoice(inv)
-			log.Printf("[Upload] Skipped duplicate: %s", invoice.InvoiceNumber)
-			continue
 		}
 
 		// Extract client name from the PDF filename

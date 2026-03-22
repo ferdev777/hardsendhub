@@ -1,0 +1,406 @@
+﻿{
+    "object":  "list",
+    "has_more":  true,
+    "data":  [
+                 {
+                     "id":  "c509afb5-00a9-4b6a-9f2b-a6ca52a180f2",
+                     "to":  [
+                                "valentinesquivo324@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:37.603765+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "6f5caa92-b532-4220-bd58-3af196958f3a",
+                     "to":  [
+                                "silviosalamonini78@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:36.505745+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "1b324185-2973-435f-94bb-4c75fab28126",
+                     "to":  [
+                                "juanolivera2002@hotmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:35.310176+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "suppressed",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "4537ddb4-02c7-4d63-9821-b9238cd35c57",
+                     "to":  [
+                                "mariano.d.g86@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:33.993621+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "0caf0705-8ce5-4f57-871a-e57b11fb50da",
+                     "to":  [
+                                "monicabarrozo3@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:32.741191+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "d243f646-aba6-4da3-9cf3-1e65420336bb",
+                     "to":  [
+                                "daniloroude50@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:31.570085+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "edb01b86-bdfb-4132-ac4f-d5e371ad4ac0",
+                     "to":  [
+                                "rogeralexisveron@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:30.432248+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "f843748d-7f2c-418e-a38f-af3aaf6a3972",
+                     "to":  [
+                                "heisbrenda68@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:29.3813+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "74f8d0e1-a8d0-417a-a060-243ef767f517",
+                     "to":  [
+                                "aricarlonacosta@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:28.214006+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "sent",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "fa1ec020-1e54-40fe-ad9f-61760a397cde",
+                     "to":  [
+                                "romeromaira850@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:26.896822+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "add8c215-6e85-4025-9f9c-6242935e847c",
+                     "to":  [
+                                "gonzalez.lujan@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:25.741851+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "6e32c1a9-cd1e-49ff-98fe-f93e79f4dab9",
+                     "to":  [
+                                "enriquecesarmartin@ahoo.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:24.564474+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "sent",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "375845a0-1dca-48f1-8d1c-03e619016a4c",
+                     "to":  [
+                                "omarzafalon@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:23.405232+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "1c7e65ab-4cf7-4a71-bd08-29bb5b0eb53f",
+                     "to":  [
+                                "gimevelazquez2022@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:22.310412+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "7cc5ec97-28bd-4b47-a0cb-dcb15c5793d1",
+                     "to":  [
+                                "pamecergneux16@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:21.227974+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "941d563a-1e1d-4d43-b970-30a2f17b94b3",
+                     "to":  [
+                                "zamaniegomc@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:20.094279+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "09decbc5-8919-4bd9-a490-55566de70d9a",
+                     "to":  [
+                                "ojedacarlae@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:18.992087+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "edc4026b-4455-43ed-bdce-f587b525e39a",
+                     "to":  [
+                                "etripodi@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:17.850565+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "76ebd5d9-a74b-4167-9e1c-f84a58325064",
+                     "to":  [
+                                "boffanerea@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:16.506961+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 },
+                 {
+                     "id":  "e0a90450-aeaf-4969-9af5-88a3dc07f4cc",
+                     "to":  [
+                                "aflodura@gmail.com"
+                            ],
+                     "from":  "Video Digital S.R.L \u003cnotificaciones@facturasvideodigital.com\u003e",
+                     "created_at":  "2026-03-05 18:09:15.520249+00",
+                     "subject":  "FACTURA MENSUAL VIDEO DIGITAL S.R.L",
+                     "bcc":  [
+
+                             ],
+                     "cc":  [
+
+                            ],
+                     "reply_to":  [
+
+                                  ],
+                     "last_event":  "delivered",
+                     "scheduled_at":  null
+                 }
+             ]
+}

@@ -1,0 +1,13 @@
+﻿Columns in 'invoices':
+- id (TEXT)
+- job_id (TEXT)
+- invoice_number (TEXT)
+- recipient_email (TEXT)
+- status (TEXT)
+- error_reason (TEXT)
+- attempts (INTEGER)
+- last_attempt_at (TIMESTAMP)
+- opened (INTEGER)
+- bounced (INTEGER)
+- complained (INTEGER)
+- delivered (INTEGER)

@@ -4,6 +4,7 @@ import Login from './components/Login'
 import Dashboard from './components/Dashboard'
 import History from './components/History'
 import MissingEmails from './components/MissingEmails'
+import CampaignPlan from './components/CampaignPlan'
 
 function AppContent() {
     const { isAuthenticated, loading } = useAuth()
@@ -33,10 +34,20 @@ function AppContent() {
         return <MissingEmails onBack={() => setCurrentPage('dashboard')} />
     }
 
+    if (currentPage === 'campaign') {
+        return (
+            <CampaignPlan
+                onBack={() => setCurrentPage('dashboard')}
+                onStarted={() => setCurrentPage('dashboard')}
+            />
+        )
+    }
+
     return (
         <Dashboard
             onNavigateHistory={() => setCurrentPage('history')}
             onNavigateMissingEmails={() => setCurrentPage('missing-emails')}
+            onNavigateCampaign={() => setCurrentPage('campaign')}
         />
     )
 }
@@ -50,3 +61,4 @@ function App() {
 }
 
 export default App
+

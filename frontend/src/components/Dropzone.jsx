@@ -25,6 +25,7 @@ function Dropzone({ onUploadComplete }) {
     const [emailSubject, setEmailSubject] = useState('FACTURA MENSUAL VIDEO DIGITAL S.R.L')
     const [emailBody, setEmailBody] = useState('Se adjunta la factura mensual correspondiente al servicio de Cable e Internet de VIDEO DIGITAL S.R.L.')
     const [apologyText, setApologyText] = useState('')
+    const [forceResend, setForceResend] = useState(false)
 
     const onDrop = useCallback((acceptedFiles) => {
         const txtFiles = acceptedFiles.filter(f =>
@@ -66,10 +67,6 @@ function Dropzone({ onUploadComplete }) {
 
     const handleUpload = async () => {
         if (!txtFile && selectedFiles.length === 0) return
-        if (!dueDate) {
-            setUploadResult({ success: false, message: 'Debe seleccionar la fecha de vencimiento antes de enviar.' })
-            return
-        }
 
         setUploading(true)
         setUploadResult(null)
@@ -103,6 +100,7 @@ function Dropzone({ onUploadComplete }) {
                 apology_text: apologyText,
             }
             formData.append('email_template', JSON.stringify(template))
+            formData.append('force_resend', forceResend.toString())
 
             const res = await fetch('/api/upload', {
                 method: 'POST',
@@ -253,7 +251,7 @@ function Dropzone({ onUploadComplete }) {
                             </div>
                             <div className="flex-1">
                                 <label className="text-surface-300 text-xs font-medium block mb-1">
-                                    Fecha de Vencimiento (email)
+                                    Fecha de Vencimiento <span className="text-surface-600">(opcional)</span>
                                 </label>
                                 <input
                                     type="date"
@@ -275,11 +273,6 @@ function Dropzone({ onUploadComplete }) {
                                 </p>
                             )
                         })()}
-                        {!dueDate && (
-                            <p className="text-xs text-orange-400 mt-2 ml-11">
-                                ⚠️ Campo obligatorio — Debe definir la fecha de vencimiento
-                            </p>
-                        )}
                     </div>
 
                     {/* Daily Limit & Email Config */}
@@ -375,11 +368,35 @@ function Dropzone({ onUploadComplete }) {
                         </div>
                     </div>
 
+                    {/* Force Resend Toggle */}
+                    <div className="flex items-center gap-3 mt-4 p-3 rounded-lg bg-surface-800/40 border border-surface-700/30">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={forceResend}
+                                onChange={(e) => setForceResend(e.target.checked)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-surface-700 peer-focus:outline-none rounded-full peer 
+                                peer-checked:after:translate-x-full peer-checked:after:border-white 
+                                after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                                after:bg-white after:border-surface-300 after:border after:rounded-full 
+                                after:h-4 after:w-4 after:transition-all peer-checked:bg-danger-500">
+                            </div>
+                        </label>
+                        <div className="flex-1">
+                            <span className="text-surface-200 text-sm font-medium">Forzar Reenvío</span>
+                            <p className="text-surface-500 text-xs mt-0.5">
+                                Ignorar el filtro "Factura ya enviada este mes" y enviar de todas formas
+                            </p>
+                        </div>
+                    </div>
+
                     {/* Upload Button */}
                     <button
                         onClick={handleUpload}
-                        disabled={uploading || !dueDate || !dailyLimit}
-                        className={`w-full flex items-center justify-center gap-2 mt-3 ${(!dueDate || !dailyLimit) ? 'btn-primary opacity-50 cursor-not-allowed' : 'btn-primary'}`}
+                        disabled={uploading || !dailyLimit}
+                        className={`w-full flex items-center justify-center gap-2 mt-3 ${(!dailyLimit) ? 'btn-primary opacity-50 cursor-not-allowed' : 'btn-primary'}`}
                     >
                         {uploading ? (
                             <>

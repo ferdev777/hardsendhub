@@ -25,9 +25,11 @@ import {
     Mail,
     User,
     MailX,
+    HardDrive,
+    Trash2,
 } from 'lucide-react'
 
-function Dashboard({ onNavigateHistory, onNavigateMissingEmails }) {
+function Dashboard({ onNavigateHistory, onNavigateMissingEmails, onNavigateCampaign }) {
     const { user, logout, token } = useAuth()
     const { metrics, events, connected } = useWebSocket(token)
     const [metricsHistory, setMetricsHistory] = useState([])
@@ -62,6 +64,31 @@ function Dashboard({ onNavigateHistory, onNavigateMissingEmails }) {
             })
         }
     }, [metrics])
+
+    const handleResetSystem = async () => {
+        if (!window.confirm("¡ATENCIÓN! Esto borrará todo el historial de campañas, facturas, mails rebotados, faltantes y registros diarios. Todos los contadores volverán a 0. ¿Estás absolutamente seguro de que querés empezar de cero?")) {
+            return
+        }
+        
+        try {
+            const res = await fetch('/api/system/reset', {
+                method: 'DELETE',
+                headers: { 
+                    Authorization: `Bearer ${token}` 
+                }
+            })
+            if (res.ok) {
+                alert("El sistema se ha reiniciado por completo. Todos los datos fueron borrados extiosamente.")
+                window.location.reload()
+            } else {
+                alert("Hubo un error al intentar limpiar la base de datos.")
+            }
+        } catch (error) {
+            console.error(error)
+            alert("Error de conexión al servidor.")
+        }
+    }
+
 
     const handleUploadComplete = (data) => {
         console.log('[Dashboard] Upload complete:', data)
@@ -125,6 +152,19 @@ function Dashboard({ onNavigateHistory, onNavigateMissingEmails }) {
                             </div>
 
                             <div className="h-6 w-px bg-surface-700" />
+
+                            {/* Carpeta Local Button */}
+                            <button
+                                onClick={onNavigateCampaign}
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg
+                                    bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300
+                                    border border-emerald-500/20 hover:border-emerald-500/40
+                                    transition-all duration-200 text-sm font-medium"
+                                id="campaign-button"
+                            >
+                                <HardDrive className="w-4 h-4" />
+                                <span className="hidden sm:inline">Carpeta</span>
+                            </button>
 
                             {/* Missing Emails Button */}
                             <button
@@ -325,7 +365,18 @@ function Dashboard({ onNavigateHistory, onNavigateMissingEmails }) {
                 <ErrorDatagrid />
 
                 {/* Footer */}
-                <footer className="text-center py-6 border-t border-surface-800/50">
+                <footer className="py-6 border-t border-surface-800/50 flex flex-col items-center justify-center space-y-4">
+                    <button
+                        onClick={handleResetSystem}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg
+                            bg-danger-500/10 text-danger-400 hover:bg-danger-500/20 hover:text-danger-300
+                            border border-danger-500/20 hover:border-danger-500/40
+                            transition-all duration-200 text-sm font-medium"
+                        title="Borrar toda la base de datos (campañas, registro, historial, etc.)"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        Resetear Sistema (Borrar Todo)
+                    </button>
                     <p className="text-surface-600 text-xs">
                         © 2026 Fernando Hirschfeld & Devrow. All rights reserved. Closed Source.
                     </p>

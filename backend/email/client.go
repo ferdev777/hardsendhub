@@ -143,9 +143,15 @@ func buildInvoiceHTML(clientName, invoiceNumber, dueDate string, tmpl *models.Em
 	}
 
 	// Use template body or default
-	bodyText := fmt.Sprintf("A continuaci&oacute;n le adjuntamos la factura del servicio CABLE/INTERNET,\ncon vencimiento el d&iacute;a : <strong style=\"color:#ffffff;\">%s</strong>", dueDateStr)
+	var bodyText string
 	if tmpl != nil && tmpl.BodyText != "" {
-		bodyText = fmt.Sprintf("%s<br><br>Vencimiento: <strong style=\"color:#ffffff;\">%s</strong>", tmpl.BodyText, dueDateStr)
+		bodyText = tmpl.BodyText
+	} else {
+		bodyText = "A continuaci&oacute;n le adjuntamos la factura del servicio CABLE/INTERNET."
+	}
+
+	if dueDateStr != "" {
+		bodyText = fmt.Sprintf("%s<br><br>Vencimiento: <strong style=\"color:#ffffff;\">%s</strong>", bodyText, dueDateStr)
 	}
 
 	headerTitle := "FACTURA MENSUAL VIDEO DIGITAL S.R.L"
@@ -290,9 +296,15 @@ func buildInvoiceText(clientName, invoiceNumber, dueDate string, tmpl *models.Em
 		header = tmpl.Subject
 	}
 
-	body := fmt.Sprintf("A continuacion le adjuntamos la factura del servicio CABLE/INTERNET,\ncon vencimiento el dia : %s", dueDateStr)
+	var body string
 	if tmpl != nil && tmpl.BodyText != "" {
-		body = fmt.Sprintf("%s\nVencimiento: %s", tmpl.BodyText, dueDateStr)
+		body = tmpl.BodyText
+	} else {
+		body = "A continuacion le adjuntamos la factura del servicio CABLE/INTERNET."
+	}
+
+	if dueDateStr != "" {
+		body = fmt.Sprintf("%s\nVencimiento: %s", body, dueDateStr)
 	}
 
 	apology := ""

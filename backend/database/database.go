@@ -85,6 +85,7 @@ func (db *DB) migrate() error {
 		"ALTER TABLE invoices ADD COLUMN opened INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE invoices ADD COLUMN bounced INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE invoices ADD COLUMN complained INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE invoices ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0",
 	}
 
 	for _, m := range alterations {
@@ -123,6 +124,59 @@ func (db *DB) migrate() error {
 		return fmt.Errorf("failed to create daily_send_counts: %w", err)
 	}
 
+	// Campaign tables for persistent analysis plans
+	campaignTables := []string{
+		`CREATE TABLE IF NOT EXISTS campaigns (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL DEFAULT '',
+			folder_path TEXT,
+			txt_path TEXT,
+			due_date TEXT NOT NULL DEFAULT '',
+			template_subject TEXT NOT NULL DEFAULT '',
+			template_body TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'DRAFT',
+			total_invoices INTEGER NOT NULL DEFAULT 0,
+			valid_count INTEGER NOT NULL DEFAULT 0,
+			no_email_count INTEGER NOT NULL DEFAULT 0,
+			blacklisted_count INTEGER NOT NULL DEFAULT 0,
+			skipped_count INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_campaigns_created_at ON campaigns(created_at)`,
+		`CREATE TABLE IF NOT EXISTS campaign_invoices (
+			id TEXT PRIMARY KEY,
+			campaign_id TEXT NOT NULL,
+			invoice_number TEXT NOT NULL,
+			client_name TEXT NOT NULL DEFAULT '',
+			email TEXT NOT NULL DEFAULT '',
+			pdf_path TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'QUEUED',
+			reason TEXT,
+			FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_campaign_invoices_campaign_id ON campaign_invoices(campaign_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_campaign_invoices_status ON campaign_invoices(status)`,
+	}
+	for _, m := range campaignTables {
+		if _, err := db.conn.Exec(m); err != nil {
+			return fmt.Errorf("campaign migration failed: %s: %w", m, err)
+		}
+	}
+
+	// Blacklist table for auto-blocked emails
+	_, err = db.conn.Exec(`CREATE TABLE IF NOT EXISTS blacklist (
+		id TEXT PRIMARY KEY,
+		email TEXT NOT NULL UNIQUE,
+		reason TEXT NOT NULL DEFAULT 'hard_bounce',
+		original_invoice TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		return fmt.Errorf("blacklist migration failed: %w", err)
+	}
+
 	log.Println("[DB] Migrations completed successfully")
 	return nil
 }
@@ -130,6 +184,32 @@ func (db *DB) migrate() error {
 // Close closes the database connection.
 func (db *DB) Close() error {
 	return db.conn.Close()
+}
+
+// PurgeAllData deletes all data from all tracking tables to start fresh.
+func (db *DB) PurgeAllData() error {
+	tables := []string{
+		"campaign_invoices",
+		"campaigns",
+		"missing_emails",
+		"invoices",
+		"jobs",
+		"daily_send_counts",
+	}
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, table := range tables {
+		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+			return fmt.Errorf("failed to clear table %s: %w", table, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // --- Job Operations ---
@@ -337,6 +417,8 @@ func (db *DB) UpdateEngagementStatus(invoiceID, eventType string) error {
 		column = "bounced"
 	case "email.complained":
 		column = "complained"
+	case "email.delivered":
+		column = "delivered"
 	default:
 		return fmt.Errorf("invalid engagement event type: %s", eventType)
 	}
@@ -348,10 +430,10 @@ func (db *DB) UpdateEngagementStatus(invoiceID, eventType string) error {
 
 // GetInvoice retrieves an invoice by its ID.
 func (db *DB) GetInvoice(invoiceID string) (*models.Invoice, error) {
-	row := db.conn.QueryRow(`SELECT id, job_id, invoice_number, recipient_email, status, error_reason, attempts, last_attempt_at, opened, bounced, complained
-							  FROM invoices WHERE id = ?`, invoiceID)
+	row := db.conn.QueryRow(`SELECT id, job_id, invoice_number, recipient_email, status, error_reason, attempts, last_attempt_at, opened, bounced, complained, delivered
+						      FROM invoices WHERE id = ?`, invoiceID)
 	inv := &models.Invoice{}
-	err := row.Scan(&inv.ID, &inv.JobID, &inv.InvoiceNumber, &inv.RecipientEmail, &inv.Status, &inv.ErrorReason, &inv.Attempts, &inv.LastAttemptAt, &inv.Opened, &inv.Bounced, &inv.Complained)
+	err := row.Scan(&inv.ID, &inv.JobID, &inv.InvoiceNumber, &inv.RecipientEmail, &inv.Status, &inv.ErrorReason, &inv.Attempts, &inv.LastAttemptAt, &inv.Opened, &inv.Bounced, &inv.Complained, &inv.Delivered)
 	if err != nil {
 		return nil, err
 	}
