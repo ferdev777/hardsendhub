@@ -14,11 +14,22 @@
 # ---------- Go Backend ----------
 backend/hardsend
 backend/hardsend.exe
+backend/hardsend-server
 backend/hardsend_metrics.db
 backend/hardsend_metrics.db-wal
 backend/hardsend_metrics.db-shm
 backend/tmp/
 backend/static/
+
+# ---------- Wails Desktop App ----------
+hardsend-desktop/hardsend-desktop
+hardsend-desktop/hardsend-desktop.exe
+hardsend-desktop/hardsend_metrics.db
+hardsend-desktop/hardsend_metrics.db-wal
+hardsend-desktop/hardsend_metrics.db-shm
+hardsend-desktop/tmp/
+hardsend-desktop/.env
+hardsend-desktop/backend/static/
 
 # ---------- Frontend ----------
 frontend/node_modules/

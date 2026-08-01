@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 )
 
 func main() {
 	url := "https://api.resend.com/emails"
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Add("Authorization", "Bearer re_KpAqWS89_No7zyh1vkDN4bMVW9qu4MZ6J")
+	apiKey := os.Getenv("RESEND_API_KEY")
+	req.Header.Add("Authorization", "Bearer "+apiKey)
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

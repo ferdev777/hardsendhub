@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 
 	"hardsend/models"
@@ -175,6 +176,28 @@ func (db *DB) migrate() error {
 	)`)
 	if err != nil {
 		return fmt.Errorf("blacklist migration failed: %w", err)
+	}
+
+	// Add engagement & resend_id columns to campaign_invoices if they don't exist
+	campaignInvoiceAlterations := []string{
+		"ALTER TABLE campaign_invoices ADD COLUMN resend_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE campaign_invoices ADD COLUMN opened INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaign_invoices ADD COLUMN bounced INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaign_invoices ADD COLUMN complained INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaign_invoices ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaign_invoices ADD COLUMN opened_at TIMESTAMP",
+		"ALTER TABLE campaign_invoices ADD COLUMN bounced_at TIMESTAMP",
+		"ALTER TABLE campaign_invoices ADD COLUMN delivered_at TIMESTAMP",
+		"CREATE INDEX IF NOT EXISTS idx_campaign_invoices_resend_id ON campaign_invoices(resend_id)",
+	}
+	for _, m := range campaignInvoiceAlterations {
+		_, err := db.conn.Exec(m)
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("campaign_invoices alteration failed: %s: %w", m, err)
+		}
 	}
 
 	log.Println("[DB] Migrations completed successfully")
@@ -689,3 +712,22 @@ func (db *DB) CanSendToday(dailyLimit int) bool {
 	count, _, _ := db.GetDailySendCount()
 	return count < dailyLimit
 }
+
+// AddToBlacklist adds an email to the automatic suppression list.
+func (db *DB) AddToBlacklist(email, reason, originalInvoice string) error {
+	id := uuid.New().String()
+	_, err := db.conn.Exec(
+		`INSERT OR IGNORE INTO blacklist (id, email, reason, original_invoice)
+		 VALUES (?, ?, ?, ?)`,
+		id, email, reason, originalInvoice,
+	)
+	return err
+}
+
+// IsBlacklisted checks if an email is in the suppression blacklist.
+func (db *DB) IsBlacklisted(email string) bool {
+	var count int
+	err := db.conn.QueryRow("SELECT COUNT(*) FROM blacklist WHERE email = ?", email).Scan(&count)
+	return err == nil && count > 0
+}
+

@@ -6,20 +6,54 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"hardsend/models"
 )
 
-// InvoiceNumberRegex is the exact regex for extracting invoice numbers from PDF filenames.
-var InvoiceNumberRegex = regexp.MustCompile(`[A-Z]\d{4}-\d{8}`)
+// InvoiceNumberRegex matches any Argentine invoice format: letter (A-Z), POS digits, separator, and sequence digits.
+// Robust against invoicing systems adding leading zeroes or changing digit counts (4 vs 5 digit POS, 8 vs 9 digit Seq).
+var InvoiceNumberRegex = regexp.MustCompile(`(?i)(?:^|[^A-Za-z])0*([A-Z])0*(\d{1,6})[-_ ]0*(\d{1,12})`)
 
 // EmailRegex is a basic email validation pattern.
 var EmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 // clientNameFromFilenameRegex extracts client name from real PDF filenames.
 // Format: "00000149 - Factura  B0002-00338911 - ABRIGO NORMA DIANA.pdf"
-var clientNameFromFilenameRegex = regexp.MustCompile(`(?i)\d+\s*-\s*Factura\s+[A-Z]\d{4}-\d{8}\s*-\s*(.+)\.pdf$`)
+// Robust against extra leading zeroes or different digit counts in prefix and invoice numbers.
+var clientNameFromFilenameRegex = regexp.MustCompile(`(?i)\d+\s*-\s*(?:Factura\s+)?0*[A-Z]0*\d{1,6}[-_ ]0*\d{1,12}\s*-\s*(.+)\.pdf$`)
+
+// NormalizeInvoiceNumber normalizes any Argentine invoice number representation into a canonical string.
+// Strips extra padding zeroes, parses Letter, POS, and Sequence numerically, and formats as canonical %s%04d-%08d
+// (or wider padding if POS >= 10000 or sequence >= 100000000).
+func NormalizeInvoiceNumber(raw string) (string, error) {
+	matches := InvoiceNumberRegex.FindStringSubmatch(raw)
+	if len(matches) < 4 {
+		return "", fmt.Errorf("invalid invoice format: %s", raw)
+	}
+
+	letter := strings.ToUpper(matches[1])
+	pos, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return "", fmt.Errorf("invalid POS number in invoice: %s", raw)
+	}
+	seq, err := strconv.Atoi(matches[3])
+	if err != nil {
+		return "", fmt.Errorf("invalid sequence number in invoice: %s", raw)
+	}
+
+	posFormat := "%04d"
+	if pos >= 10000 {
+		posFormat = "%05d"
+	}
+	seqFormat := "%08d"
+	if seq >= 100000000 {
+		seqFormat = "%09d"
+	}
+
+	return fmt.Sprintf("%s"+posFormat+"-"+seqFormat, letter, pos, seq), nil
+}
 
 // ClientDB holds the parsed client database mapping invoice numbers to emails.
 type ClientDB struct {
@@ -90,12 +124,23 @@ func parseLine(db *ClientDB, line string) {
 	}
 
 	db.entries[invoiceNumber] = email
+	if norm, err := NormalizeInvoiceNumber(invoiceNumber); err == nil {
+		db.entries[norm] = email
+	}
 }
 
 // GetEmail looks up an email for the given invoice number.
+// Checks exact string match first, then canonical normalized format.
 func (c *ClientDB) GetEmail(invoiceNumber string) (string, bool) {
 	email, ok := c.entries[invoiceNumber]
-	return email, ok
+	if ok {
+		return email, true
+	}
+	if norm, err := NormalizeInvoiceNumber(invoiceNumber); err == nil {
+		email, ok = c.entries[norm]
+		return email, ok
+	}
+	return "", false
 }
 
 // Size returns the number of entries in the client database.
@@ -103,13 +148,14 @@ func (c *ClientDB) Size() int {
 	return len(c.entries)
 }
 
-// ExtractInvoiceNumber extracts the invoice number from a PDF filename.
+// ExtractInvoiceNumber extracts and normalizes the invoice number from a PDF filename.
+// Fully fault-proof against extra padding zeroes or shifted digit lengths.
 func ExtractInvoiceNumber(filename string) (string, error) {
-	match := InvoiceNumberRegex.FindString(filename)
-	if match == "" {
+	norm, err := NormalizeInvoiceNumber(filename)
+	if err != nil {
 		return "", fmt.Errorf("no invoice number found in filename: %s", filename)
 	}
-	return match, nil
+	return norm, nil
 }
 
 // ValidateEmail checks if an email address has a valid format.
@@ -119,8 +165,15 @@ func ValidateEmail(email string) bool {
 
 // IsTypeXInvoice checks if the invoice number is a type X (e.g. X0003-00017479).
 // Type X invoices are generated but NOT sent to anyone — they are skipped silently.
+// Robust against leading zeroes, whitespace, or unnormalized formats.
 func IsTypeXInvoice(invoiceNumber string) bool {
-	return strings.HasPrefix(invoiceNumber, "X")
+	norm, err := NormalizeInvoiceNumber(invoiceNumber)
+	if err == nil {
+		return strings.HasPrefix(norm, "X")
+	}
+	cleaned := strings.TrimSpace(strings.ToUpper(invoiceNumber))
+	cleaned = strings.TrimLeft(cleaned, "0")
+	return strings.HasPrefix(cleaned, "X")
 }
 
 // ExtractClientNameFromFilename extracts the client name from the PDF filename.

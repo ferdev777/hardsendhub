@@ -146,12 +146,12 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 		// Professional approach: Create a context with timeout for the individual request
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 
-		// Attempt to send via EmailSender
 		var err error
+		var resendID string
 		if p.emailClient == nil {
 			err = fmt.Errorf("email service is not initialized on the server (check API keys)")
 		} else {
-			err = p.emailClient.SendInvoiceEmail(ctx, invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName, invoice.ID, job.DueDate, job.Template)
+			resendID, err = p.emailClient.SendInvoiceEmail(ctx, invoice.RecipientEmail, invoice.InvoiceNumber, job.PDFPath, job.ClientName, invoice.ID, job.DueDate, job.Template)
 		}
 		cancel()
 
@@ -159,9 +159,12 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 			// Success
 			p.circuitBreaker.RecordSuccess()
 			_ = p.db.UpdateInvoiceStatus(invoice.ID, models.InvoiceStatusSuccess, nil, attempt)
+			if job.CampaignInvoiceID != "" {
+				_ = p.db.UpdateCampaignInvoiceResendID(job.CampaignInvoiceID, models.CampaignInvoiceStatusSent, resendID)
+			}
 			_, _ = p.db.IncrementDailySendCount(p.cfg.DailyLimit)
-			log.Printf("[Worker] Successfully sent invoice %s to %s (attempt %d)",
-				invoice.InvoiceNumber, invoice.RecipientEmail, attempt)
+			log.Printf("[Worker] Successfully sent invoice %s to %s (attempt %d, ResendID: %s)",
+				invoice.InvoiceNumber, invoice.RecipientEmail, attempt, resendID)
 			return
 		}
 
@@ -175,6 +178,9 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 		if strings.Contains(errStr, "Invalid") {
 			reason := "Email inválido rechazado por el servidor"
 			_ = p.db.UpdateInvoiceStatus(invoice.ID, models.InvoiceStatusErrorValidation, &reason, attempt)
+			if job.CampaignInvoiceID != "" {
+				_ = p.db.UpdateCampaignInvoiceStatus(job.CampaignInvoiceID, models.CampaignInvoiceStatusError)
+			}
 			// Register in missing_emails as invalid_email
 			me := &models.MissingEmail{
 				ID:            uuid.New().String(),
@@ -205,8 +211,12 @@ func (p *Pool) processInvoice(job models.InvoiceJob) {
 	// All retries exhausted
 	reason := "Maximum retry attempts exhausted"
 	_ = p.db.UpdateInvoiceStatus(invoice.ID, models.InvoiceStatusErrorNetwork, &reason, p.cfg.MaxRetries)
+	if job.CampaignInvoiceID != "" {
+		_ = p.db.UpdateCampaignInvoiceStatus(job.CampaignInvoiceID, models.CampaignInvoiceStatusError)
+	}
 	log.Printf("[Worker] All retries exhausted for invoice %s", invoice.InvoiceNumber)
 }
+
 
 // broadcastMetrics sends real-time metrics to connected WebSocket clients every second.
 func (p *Pool) broadcastMetrics() {

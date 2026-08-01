@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import Footer from './Footer'
 import {
     ArrowLeft,
     Download,
@@ -146,54 +147,45 @@ function MissingEmails({ onBack }) {
         <div className="min-h-screen">
             <div className="animated-bg" />
 
-            {/* Header */}
-            <header className="sticky top-0 z-50 backdrop-blur-xl bg-surface-950/80 border-b border-surface-800/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={onBack}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg
-                                    text-surface-400 hover:text-white hover:bg-surface-800/50
-                                    transition-all duration-200 text-sm"
-                                id="back-button"
-                            >
-                                <ArrowLeft className="w-4 h-4" />
-                                <span className="hidden sm:inline">Panel</span>
-                            </button>
-                            <div className="h-6 w-px bg-surface-700" />
-                            <div className="flex items-center gap-2">
-                                <div className="p-2 rounded-lg bg-amber-500/20">
-                                    <MailX className="w-5 h-5 text-amber-400" />
-                                </div>
-                                <div>
-                                    <h1 className="text-lg font-bold text-white leading-tight">
-                                        Emails <span className="text-amber-400">Faltantes</span>
-                                    </h1>
-                                    <p className="text-[10px] text-surface-500 font-medium -mt-0.5">
-                                        Sin email / Emails rebotados
-                                    </p>
-                                </div>
+            {/* Floating Premium Navbar */}
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[96%] max-w-7xl">
+                <header className="glass-card rounded-2xl px-3 sm:px-5 h-16 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-surface-700/50 bg-surface-900/60 backdrop-blur-xl">
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-surface-800/50 transition-all duration-200 text-sm font-medium"
+                            id="back-button"
+                        >
+                            <ArrowLeft className="w-4 h-4" />
+                            <span className="hidden sm:inline">Panel</span>
+                        </button>
+                        <div className="h-6 w-px bg-surface-800" />
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg border border-amber-500/20 bg-amber-500/10">
+                                <MailX className="w-4 h-4 text-amber-400" />
+                            </div>
+                            <div className="hidden sm:block">
+                                <h1 className="text-sm font-bold text-white leading-none mb-0.5">
+                                    Emails <span className="text-amber-400">Faltantes</span>
+                                </h1>
+                                <p className="text-[10px] text-surface-400 font-medium">Sin email / Rebotados</p>
                             </div>
                         </div>
-
-                        {/* Export Button */}
-                        <button
-                            onClick={handleExport}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg
-                                bg-hardsend-500/10 text-hardsend-400 hover:bg-hardsend-500/20 hover:text-hardsend-300
-                                border border-hardsend-500/20 hover:border-hardsend-500/40
-                                transition-all duration-200 text-sm font-medium"
-                            id="export-csv-button"
-                        >
-                            <Download className="w-4 h-4" />
-                            <span className="hidden sm:inline">Descargar CSV</span>
-                        </button>
                     </div>
-                </div>
-            </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+                    {/* Export Button */}
+                    <button
+                        onClick={handleExport}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-hardsend-500/10 text-hardsend-400 hover:bg-hardsend-500/20 hover:text-hardsend-300 border border-hardsend-500/20 hover:border-hardsend-500/40 transition-all duration-200 text-sm font-medium shadow-[0_0_15px_rgba(99,102,241,0.1)]"
+                        id="export-csv-button"
+                    >
+                        <Download className="w-4 h-4" />
+                        <span className="hidden sm:inline">Descargar CSV</span>
+                    </button>
+                </header>
+            </div>
+
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-6 space-y-6">
                 {/* Summary Cards */}
                 {summary && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-slide-up">
@@ -544,11 +536,7 @@ function MissingEmails({ onBack }) {
                 </div>
 
                 {/* Footer */}
-                <footer className="text-center py-6 border-t border-surface-800/50">
-                    <p className="text-surface-600 text-xs">
-                        © 2026 Fernando Hirschfeld & Devrow. All rights reserved. Closed Source.
-                    </p>
-                </footer>
+                <Footer />
             </main>
         </div>
     )
