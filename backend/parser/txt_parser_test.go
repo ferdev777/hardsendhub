@@ -15,6 +15,9 @@ func TestExtractInvoiceNumber(t *testing.T) {
 		{"real format", "00000149 - Factura  B0002-00338911 - ABRIGO NORMA DIANA.pdf", "B0002-00338911", false},
 		{"type A", "A0002-00010043.pdf", "A0002-00010043", false},
 		{"type X", "00000155 - Factura  X0003-00017479 - AQUINO SILVANA MARICEL    .pdf", "X0003-00017479", false},
+		{"extra zero POS format", "00000149 - Factura  B00002-00338911 - ABRIGO NORMA DIANA.pdf", "B0002-00338911", false},
+		{"extra zero sequence format", "00000149 - Factura  B0002-000338911 - ABRIGO NORMA DIANA.pdf", "B0002-00338911", false},
+		{"extra zero before letter", "00000149 - Factura  0B00002-000338911 - ABRIGO NORMA DIANA.pdf", "B0002-00338911", false},
 		{"no match", "random_file.pdf", "", true},
 		{"empty", "", "", true},
 		{"partial match", "B0002.pdf", "", true},
@@ -87,6 +90,9 @@ func TestIsTypeXInvoice(t *testing.T) {
 		want          bool
 	}{
 		{"X0003-00017479", true},
+		{"0X0003-00017479", true},
+		{"X00003-000017479", true},
+		{"0B00002-00338911", false},
 		{"B0002-00338911", false},
 		{"A0002-00010043", false},
 		{"X0001-00000001", true},
@@ -170,10 +176,71 @@ func TestValidateAndBuildInvoice(t *testing.T) {
 		t.Errorf("ValidateAndBuildInvoice() for type X should return SKIP_TYPE_X, got: %s", errMsg)
 	}
 
+	// Type X invoice with extra zero (should also be skipped)
+	inv, errMsg = ValidateAndBuildInvoice("00000155 - Factura  0X00003-00017479 - TEST.pdf", db)
+	if errMsg != "SKIP_TYPE_X" {
+		t.Errorf("ValidateAndBuildInvoice() for type X with extra zero should return SKIP_TYPE_X, got: %s", errMsg)
+	}
+
+	// Valid invoice with extra zero in filename matching TXT entry without extra zero
+	inv, errMsg = ValidateAndBuildInvoice("00000149 - Factura  B00002-00000001 - TEST.pdf", db)
+	if errMsg != "" {
+		t.Errorf("ValidateAndBuildInvoice() with extra zero unexpected error: %s", errMsg)
+	}
+	if inv == nil || inv.InvoiceNumber != "B0002-00000001" {
+		t.Error("ValidateAndBuildInvoice() should normalize invoice number from filename")
+	}
+
 	// Invalid filename
 	inv, errMsg = ValidateAndBuildInvoice("random.pdf", db)
 	if errMsg == "" {
 		t.Error("ValidateAndBuildInvoice() should return error for invalid filename")
 	}
 	_ = inv // prevent unused warning
+}
+
+func TestNormalizeInvoiceNumber(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{"4 and 8 digits", "B0002-00000001", "B0002-00000001", false},
+		{"5 and 9 digits with leading zeros", "0B00002-000000001", "B0002-00000001", false},
+		{"type X with extra zeros", "0X00003-000017479", "X0003-00017479", false},
+		{"real filename with extra zeroes", "00000149 - Factura  B00002-000338911 - ABRIGO NORMA DIANA.pdf", "B0002-00338911", false},
+		{"invalid format", "random_string", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeInvoiceNumber(tt.raw)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NormalizeInvoiceNumber(%q) error = %v, wantErr %v", tt.raw, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("NormalizeInvoiceNumber(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseTXTFromBytes_NormalizedLookup(t *testing.T) {
+	input := []byte("test@example.com;B0002-00000001\nuser@domain.com;X00003-00017479\n")
+	db, err := ParseTXTFromBytes(input)
+	if err != nil {
+		t.Fatalf("ParseTXTFromBytes() error = %v", err)
+	}
+
+	email, found := db.GetEmail("B00002-00000001")
+	if !found || email != "test@example.com" {
+		t.Errorf("GetEmail(B00002-00000001) = (%q, %v), want (test@example.com, true)", email, found)
+	}
+
+	email, found = db.GetEmail("X0003-00017479")
+	if !found || email != "user@domain.com" {
+		t.Errorf("GetEmail(X0003-00017479) = (%q, %v), want (user@domain.com, true)", email, found)
+	}
 }

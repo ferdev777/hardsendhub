@@ -72,6 +72,16 @@ func main() {
 	campaignHandler := handlers.NewCampaignHandler(db, pool, cfg)
 	historyHandler := handlers.NewHistoryHandler(db)
 	filesystemHandler := handlers.NewFilesystemHandler()
+	webhookHandler := handlers.NewWebhookHandler(db, cfg.SvixSecret)
+	analyticsHandler := handlers.NewAnalyticsHandler(db)
+
+	// Start automatic recovery for interrupted campaigns
+	go campaignHandler.ResumeActiveCampaign()
+
+	// Start daily scheduler (runs at configured SCHEDULE_TIME, default 09:00)
+	scheduler := workers.NewScheduler(db, campaignHandler, cfg.ScheduleTime)
+	scheduler.Start()
+	defer scheduler.Stop()
 
 	// Set up router
 	r := chi.NewRouter()
@@ -91,6 +101,7 @@ func main() {
 
 	// Public routes
 	r.Post("/api/login", authHandler.Login)
+	r.Post("/api/webhooks/resend", webhookHandler.HandleResendWebhook)
 
 	// WebSocket route (auth via query param)
 	r.Get("/ws/metrics", hub.HandleWebSocket)
@@ -118,6 +129,10 @@ func main() {
 		r.Post("/api/campaigns/{id}/start", campaignHandler.Start)
 		r.Post("/api/campaigns/{id}/cancel", campaignHandler.Cancel)
 
+		// Analytics dashboard endpoints
+		r.Get("/api/analytics/summary", analyticsHandler.GetSummary)
+		r.Get("/api/analytics/timeseries", analyticsHandler.GetTimeSeries)
+
 		// Monthly history + manual correction routes + system
 		r.Get("/api/history/monthly", historyHandler.GetMonthly)
 		r.Patch("/api/invoices/{id}/status", historyHandler.UpdateInvoiceStatus)
@@ -130,8 +145,13 @@ func main() {
 
 	// Serve React static files
 	staticDir := "./static"
+	if _, err := os.Stat(staticDir); err != nil {
+		if _, errWww := os.Stat("./www"); errWww == nil {
+			staticDir = "./www"
+		}
+	}
 	if _, err := os.Stat(staticDir); err == nil {
-		log.Println("[Server] Serving static files from ./static")
+		log.Printf("[Server] Serving static files from %s", staticDir)
 		fileServer(r, staticDir)
 	} else {
 		log.Println("[Server] No static directory found. Frontend must be served separately.")

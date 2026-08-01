@@ -30,7 +30,7 @@ type ResendListResponse struct {
 	Data    []ResendEmail `json:"data"`
 }
 
-const resendAPIKey = "re_KpAqWS89_No7zyh1vkDN4bMVW9qu4MZ6J"
+var resendAPIKey = os.Getenv("RESEND_API_KEY")
 
 func fetchEmails(afterCursor string) (*ResendListResponse, error) {
 	url := "https://api.resend.com/emails?limit=100"

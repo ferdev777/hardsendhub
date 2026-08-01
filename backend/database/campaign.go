@@ -88,9 +88,10 @@ func (db *DB) UpdateCampaignCounts(campaignID string, total, valid, noEmail, ski
 // CreateCampaignInvoice inserts a new campaign invoice record.
 func (db *DB) CreateCampaignInvoice(ci *models.CampaignInvoice) error {
 	_, err := db.conn.Exec(
-		`INSERT INTO campaign_invoices (id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO campaign_invoices (id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason, resend_id, opened, bounced, complained, delivered, opened_at, bounced_at, delivered_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ci.ID, ci.CampaignID, ci.InvoiceNumber, ci.ClientName, ci.Email, ci.PDFPath, ci.Status, ci.Reason,
+		ci.ResendID, ci.Opened, ci.Bounced, ci.Complained, ci.Delivered, ci.OpenedAt, ci.BouncedAt, ci.DeliveredAt,
 	)
 	return err
 }
@@ -104,8 +105,8 @@ func (db *DB) CreateCampaignInvoicesBatch(invoices []models.CampaignInvoice) err
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(
-		`INSERT INTO campaign_invoices (id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO campaign_invoices (id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason, resend_id, opened, bounced, complained, delivered, opened_at, bounced_at, delivered_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
 		return err
@@ -113,7 +114,10 @@ func (db *DB) CreateCampaignInvoicesBatch(invoices []models.CampaignInvoice) err
 	defer stmt.Close()
 
 	for _, ci := range invoices {
-		_, err := stmt.Exec(ci.ID, ci.CampaignID, ci.InvoiceNumber, ci.ClientName, ci.Email, ci.PDFPath, ci.Status, ci.Reason)
+		_, err := stmt.Exec(
+			ci.ID, ci.CampaignID, ci.InvoiceNumber, ci.ClientName, ci.Email, ci.PDFPath, ci.Status, ci.Reason,
+			ci.ResendID, ci.Opened, ci.Bounced, ci.Complained, ci.Delivered, ci.OpenedAt, ci.BouncedAt, ci.DeliveredAt,
+		)
 		if err != nil {
 			return err
 		}
@@ -128,12 +132,12 @@ func (db *DB) GetCampaignInvoices(campaignID, statusFilter string) ([]models.Cam
 	var args []interface{}
 
 	if statusFilter != "" {
-		query = `SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason
+		query = `SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason, resend_id, opened, bounced, complained, delivered, opened_at, bounced_at, delivered_at
 				 FROM campaign_invoices WHERE campaign_id = ? AND status = ?
 				 ORDER BY invoice_number`
 		args = []interface{}{campaignID, statusFilter}
 	} else {
-		query = `SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason
+		query = `SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason, resend_id, opened, bounced, complained, delivered, opened_at, bounced_at, delivered_at
 				 FROM campaign_invoices WHERE campaign_id = ?
 				 ORDER BY invoice_number`
 		args = []interface{}{campaignID}
@@ -148,7 +152,36 @@ func (db *DB) GetCampaignInvoices(campaignID, statusFilter string) ([]models.Cam
 	var results []models.CampaignInvoice
 	for rows.Next() {
 		var ci models.CampaignInvoice
-		if err := rows.Scan(&ci.ID, &ci.CampaignID, &ci.InvoiceNumber, &ci.ClientName, &ci.Email, &ci.PDFPath, &ci.Status, &ci.Reason); err != nil {
+		if err := rows.Scan(
+			&ci.ID, &ci.CampaignID, &ci.InvoiceNumber, &ci.ClientName, &ci.Email, &ci.PDFPath, &ci.Status, &ci.Reason,
+			&ci.ResendID, &ci.Opened, &ci.Bounced, &ci.Complained, &ci.Delivered, &ci.OpenedAt, &ci.BouncedAt, &ci.DeliveredAt,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, ci)
+	}
+	return results, nil
+}
+
+// GetPendingCampaignInvoices retrieves invoices in QUEUED status for a campaign (used for recovery and scheduler).
+func (db *DB) GetPendingCampaignInvoices(campaignID string) ([]models.CampaignInvoice, error) {
+	query := `SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason, resend_id, opened, bounced, complained, delivered, opened_at, bounced_at, delivered_at
+			  FROM campaign_invoices WHERE campaign_id = ? AND status = 'QUEUED'
+			  ORDER BY invoice_number`
+
+	rows, err := db.conn.Query(query, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []models.CampaignInvoice
+	for rows.Next() {
+		var ci models.CampaignInvoice
+		if err := rows.Scan(
+			&ci.ID, &ci.CampaignID, &ci.InvoiceNumber, &ci.ClientName, &ci.Email, &ci.PDFPath, &ci.Status, &ci.Reason,
+			&ci.ResendID, &ci.Opened, &ci.Bounced, &ci.Complained, &ci.Delivered, &ci.OpenedAt, &ci.BouncedAt, &ci.DeliveredAt,
+		); err != nil {
 			return nil, err
 		}
 		results = append(results, ci)
@@ -159,12 +192,15 @@ func (db *DB) GetCampaignInvoices(campaignID, statusFilter string) ([]models.Cam
 // GetCampaignInvoiceByNumber checks if an invoice number already exists in a campaign.
 func (db *DB) GetCampaignInvoiceByNumber(campaignID, invoiceNumber string) (*models.CampaignInvoice, error) {
 	row := db.conn.QueryRow(
-		`SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason
+		`SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason, resend_id, opened, bounced, complained, delivered, opened_at, bounced_at, delivered_at
 		 FROM campaign_invoices WHERE campaign_id = ? AND invoice_number = ?`,
 		campaignID, invoiceNumber,
 	)
 	ci := &models.CampaignInvoice{}
-	err := row.Scan(&ci.ID, &ci.CampaignID, &ci.InvoiceNumber, &ci.ClientName, &ci.Email, &ci.PDFPath, &ci.Status, &ci.Reason)
+	err := row.Scan(
+		&ci.ID, &ci.CampaignID, &ci.InvoiceNumber, &ci.ClientName, &ci.Email, &ci.PDFPath, &ci.Status, &ci.Reason,
+		&ci.ResendID, &ci.Opened, &ci.Bounced, &ci.Complained, &ci.Delivered, &ci.OpenedAt, &ci.BouncedAt, &ci.DeliveredAt,
+	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -183,6 +219,42 @@ func (db *DB) UpdateCampaignInvoiceStatus(id, status string) error {
 	return err
 }
 
+// UpdateCampaignInvoiceResendID updates status to SENT and stores the resend API ID.
+func (db *DB) UpdateCampaignInvoiceResendID(id, status, resendID string) error {
+	_, err := db.conn.Exec(
+		"UPDATE campaign_invoices SET status = ?, resend_id = ? WHERE id = ?",
+		status, resendID, id,
+	)
+	return err
+}
+
+// UpdateCampaignInvoiceEngagement sets an engagement event by resend_id or invoice_id.
+func (db *DB) UpdateCampaignInvoiceEngagement(resendID, invoiceID, eventType string, eventTime time.Time) error {
+	var column, timeCol string
+	switch eventType {
+	case "email.opened", "opened":
+		column, timeCol = "opened", "opened_at"
+	case "email.bounced", "bounced":
+		column, timeCol = "bounced", "bounced_at"
+	case "email.complained", "complained":
+		column, timeCol = "complained", "bounced_at"
+	case "email.delivered", "delivered":
+		column, timeCol = "delivered", "delivered_at"
+	default:
+		return nil
+	}
+
+	var err error
+	if resendID != "" {
+		query := "UPDATE campaign_invoices SET " + column + " = 1, " + timeCol + " = ? WHERE resend_id = ?"
+		_, err = db.conn.Exec(query, eventTime, resendID)
+	} else if invoiceID != "" {
+		query := "UPDATE campaign_invoices SET " + column + " = 1, " + timeCol + " = ? WHERE id = ?"
+		_, err = db.conn.Exec(query, eventTime, invoiceID)
+	}
+	return err
+}
+
 // UpdateCampaignInvoicesBulkStatus updates the status of all campaign invoices with a given current status.
 func (db *DB) UpdateCampaignInvoicesBulkStatus(campaignID, currentStatus, newStatus string) (int64, error) {
 	result, err := db.conn.Exec(
@@ -194,3 +266,4 @@ func (db *DB) UpdateCampaignInvoicesBulkStatus(campaignID, currentStatus, newSta
 	}
 	return result.RowsAffected()
 }
+

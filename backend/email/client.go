@@ -18,8 +18,9 @@ import (
 // This allows for mocking in unit tests and follows
 // Clean Architecture principles for high-profile Go projects.
 type EmailSender interface {
-	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string, tmpl *models.EmailTemplate) error
+	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string, tmpl *models.EmailTemplate) (string, error)
 }
+
 
 // Client wraps the Resend client with rate limiting.
 // Implements the EmailSender interface.
@@ -79,19 +80,19 @@ func (c *Client) refillRateLimiter() {
 
 // SendInvoiceEmail sends an invoice PDF as an email attachment via Resend.
 // It uses the provided context to respect timeouts and cancellations.
-func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string, tmpl *models.EmailTemplate) error {
+func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string, tmpl *models.EmailTemplate) (string, error) {
 	// Wait for rate limiter token or context cancellation
 	select {
 	case <-c.rateLimiter:
 		// proceed
 	case <-ctx.Done():
-		return ctx.Err()
+		return "", ctx.Err()
 	}
 
 	// Read the PDF file
 	pdfData, err := os.ReadFile(pdfPath)
 	if err != nil {
-		return fmt.Errorf("failed to read PDF file at %s: %w", pdfPath, err)
+		return "", fmt.Errorf("failed to read PDF file at %s: %w", pdfPath, err)
 	}
 
 	// Build email content - use template if provided, otherwise defaults
@@ -125,12 +126,12 @@ func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNu
 
 	// For production-grade code, wrapping the network call with context
 	// ensures we don't leak goroutines if Resend hangs.
-	_, err = c.resendClient.Emails.SendWithContext(ctx, params)
+	resp, err := c.resendClient.Emails.SendWithContext(ctx, params)
 	if err != nil {
-		return fmt.Errorf("Resend API error: %w", err)
+		return "", fmt.Errorf("Resend API error: %w", err)
 	}
 
-	return nil
+	return resp.Id, nil
 }
 
 // buildInvoiceHTML generates the HTML email body matching the Video Digital template.

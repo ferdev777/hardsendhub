@@ -34,6 +34,10 @@ type Config struct {
 	ResendAPIKey    string
 	ResendFrom      string
 	ResendRateLimit int // emails per second
+	SvixSecret      string
+
+	// Scheduler
+	ScheduleTime string // HH:MM format, default "09:00"
 
 	// Database
 	DBPath string
@@ -52,12 +56,12 @@ func Load() *Config {
 	}
 
 	return &Config{
-		ServerPort:         getEnv("PORT", "8080"),
+		ServerPort:         getEnv("PORT", "8088"),
 		AdminUsername:      getEnv("ADMIN_USERNAME", "hardsendvideodigital"),
 		AdminPassword:      getEnv("ADMIN_PASSWORD", "modeloxvz91"),
-		JWTSecret:          getEnv("JWT_SECRET", "hardsend-super-secret-key-2026-devrow"),
+		JWTSecret:          getEnv("JWT_SECRET", "hardsend-devrow-production-2026-secret-key"),
 		JWTExpiry:          parseDuration(getEnv("JWT_EXPIRY", "24h")),
-		WorkerCount:        parseInt(getEnv("WORKER_COUNT", "1")),
+		WorkerCount:        parseInt(getEnv("WORKER_COUNT", "50")),
 		MaxRetries:         parseInt(getEnv("MAX_RETRIES", "3")),
 		RetryDelay:         parseDuration(getEnv("RETRY_DELAY", "60s")),
 		DailyLimit:         parseInt(getEnv("DAILY_LIMIT", "0")), // 0 = must be set from frontend
@@ -66,6 +70,8 @@ func Load() *Config {
 		ResendAPIKey:       getEnv("RESEND_API_KEY", ""),
 		ResendFrom:         getEnv("RESEND_FROM", "notificaciones@facturasvideodigital.com"),
 		ResendRateLimit:    parseInt(getEnv("RESEND_RATE_LIMIT", "10")),
+		SvixSecret:         getEnv("SVIX_SECRET", ""),
+		ScheduleTime:       getEnv("SCHEDULE_TIME", "09:00"),
 		DBPath:             getEnv("DB_PATH", "./hardsend_metrics.db"),
 		TempDir:            getEnv("TEMP_DIR", "./tmp"),
 	}

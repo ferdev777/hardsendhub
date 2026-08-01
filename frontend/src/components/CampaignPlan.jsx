@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
+import Footer from './Footer'
 import FolderPicker from './FolderPicker'
 import {
     FolderOpen,
@@ -238,40 +239,42 @@ function CampaignPlan({ onBack, onStarted }) {
         <div className="min-h-screen">
             <div className="animated-bg" />
 
-            {/* Header */}
-            <header className="sticky top-0 z-50 backdrop-blur-xl bg-surface-950/80 border-b border-surface-800/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={onBack}
-                                className="p-2 rounded-lg hover:bg-surface-800/50 transition-colors"
-                                id="campaign-back-button"
-                            >
-                                <ChevronLeft className="w-5 h-5 text-surface-400" />
-                            </button>
-                            <div className="p-2 rounded-lg bg-emerald-500/20">
-                                <HardDrive className="w-5 h-5 text-emerald-400" />
+            {/* Floating Premium Navbar */}
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[96%] max-w-7xl">
+                <header className="glass-card rounded-2xl px-3 sm:px-5 h-16 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-surface-700/50 bg-surface-900/60 backdrop-blur-xl">
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-surface-800/50 transition-all duration-200 text-sm font-medium"
+                            id="campaign-back-button"
+                        >
+                            <ChevronLeft className="w-5 h-5" />
+                            <span className="hidden sm:inline">Panel</span>
+                        </button>
+                        <div className="h-6 w-px bg-surface-800" />
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg border border-emerald-500/20 bg-emerald-500/10">
+                                <HardDrive className="w-4 h-4 text-emerald-400" />
                             </div>
-                            <div>
-                                <h1 className="text-lg font-bold text-white leading-tight">
+                            <div className="hidden sm:block">
+                                <h1 className="text-sm font-bold text-white leading-none mb-0.5">
                                     Carpeta <span className="text-emerald-400">Local</span>
                                 </h1>
-                                <p className="text-[10px] text-surface-500 font-medium -mt-0.5">
-                                    Escaneo directo de PDFs
-                                </p>
+                                <p className="text-[10px] text-surface-400 font-medium">Escaneo de PDFs</p>
                             </div>
                         </div>
-                        {campaign && (
+                    </div>
+                    {campaign && (
+                        <div className="flex items-center">
                             <span className={`badge ${campaign.status === 'READY' ? 'badge-success' : campaign.status === 'SENDING' ? 'badge-processing' : 'badge-warning'}`}>
                                 {campaign.status}
                             </span>
-                        )}
-                    </div>
-                </div>
-            </header>
+                        </div>
+                    )}
+                </header>
+            </div>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-6 space-y-6">
                 {/* Error Alert */}
                 {error && (
                     <div className="glass-card p-4 border-danger/30 bg-danger/10 animate-slide-down">
@@ -690,6 +693,10 @@ function CampaignPlan({ onBack, onStarted }) {
                         </div>
                     </>
                 )}
+                
+                <div className="mt-8">
+                    <Footer />
+                </div>
             </main>
 
             {/* Folder Picker Modals */}

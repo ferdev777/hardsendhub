@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import Footer from './Footer'
 import {
     Calendar,
     Clock,
@@ -72,50 +73,51 @@ function History({ onBack }) {
         <div className="min-h-screen">
             <div className="animated-bg" />
 
-            {/* Header */}
-            <header className="sticky top-0 z-50 backdrop-blur-xl bg-surface-950/80 border-b border-surface-800/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={onBack}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg text-surface-400 hover:text-white hover:bg-surface-800/50 transition-all duration-200 text-sm"
-                                id="back-to-dashboard"
-                            >
-                                <ChevronLeft className="w-4 h-4" />
-                                <span>Panel</span>
-                            </button>
-                            <div className="h-6 w-px bg-surface-700" />
-                            <div className="flex items-center gap-2">
-                                <div className="p-2 rounded-lg" style={{ background: 'var(--gradient-primary)' }}>
-                                    <Calendar className="w-4 h-4 text-white" />
-                                </div>
-                                <h1 className="text-lg font-bold text-white">Registro Histórico</h1>
+            {/* Floating Premium Navbar */}
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[96%] max-w-7xl">
+                <header className="glass-card rounded-2xl px-3 sm:px-5 h-16 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-surface-700/50 bg-surface-900/60 backdrop-blur-xl">
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-surface-400 hover:text-white hover:bg-surface-800/50 transition-all duration-200 text-sm font-medium"
+                            id="back-to-dashboard"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                            <span className="hidden sm:inline">Panel</span>
+                        </button>
+                        <div className="h-6 w-px bg-surface-800" />
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg border border-white/10" style={{ background: 'var(--gradient-primary)' }}>
+                                <Calendar className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="hidden sm:block">
+                                <h1 className="text-sm font-bold text-white leading-none mb-0.5">Registro Histórico</h1>
+                                <p className="text-[10px] text-surface-400 font-medium">Estadísticas</p>
                             </div>
                         </div>
-
-                        {/* Period filters */}
-                        <div className="flex items-center gap-1 bg-surface-800/50 rounded-xl p-1">
-                            <Filter className="w-3.5 h-3.5 text-surface-500 ml-2" />
-                            {PERIODS.map((p) => (
-                                <button
-                                    key={p.key}
-                                    onClick={() => setPeriod(p.key)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${period === p.key
-                                        ? 'bg-hardsend-500 text-white shadow-lg shadow-hardsend-500/25'
-                                        : 'text-surface-400 hover:text-white hover:bg-surface-700/50'
-                                        }`}
-                                    id={`filter-${p.key}`}
-                                >
-                                    {p.label}
-                                </button>
-                            ))}
-                        </div>
                     </div>
-                </div>
-            </header>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+                    {/* Period filters */}
+                    <div className="flex items-center gap-1 bg-surface-950/40 border border-surface-800/50 rounded-xl p-1 overflow-x-auto">
+                        <Filter className="w-3.5 h-3.5 text-surface-500 ml-2 hidden sm:block" />
+                        {PERIODS.map((p) => (
+                            <button
+                                key={p.key}
+                                onClick={() => setPeriod(p.key)}
+                                className={`px-2 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${period === p.key
+                                    ? 'bg-hardsend-500 text-white shadow-lg shadow-hardsend-500/25'
+                                    : 'text-surface-400 hover:text-white hover:bg-surface-800/50'
+                                    }`}
+                                id={`filter-${p.key}`}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                </header>
+            </div>
+
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-6 space-y-6">
                 {loading ? (
                     <div className="flex items-center justify-center py-20">
                         <div className="w-10 h-10 border-4 border-hardsend-500/30 border-t-hardsend-500 rounded-full animate-spin" />
@@ -218,11 +220,7 @@ function History({ onBack }) {
                 ) : null}
 
                 {/* Footer */}
-                <footer className="text-center py-6 border-t border-surface-800/50">
-                    <p className="text-surface-600 text-xs">
-                        © 2026 Fernando Hirschfeld & Devrow. All rights reserved. Closed Source.
-                    </p>
-                </footer>
+                <Footer />
             </main>
         </div>
     )

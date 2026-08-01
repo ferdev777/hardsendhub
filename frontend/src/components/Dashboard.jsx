@@ -5,6 +5,8 @@ import StatsRow from './StatsRow'
 import ProgressBar from './ProgressBar'
 import Dropzone from './Dropzone'
 import ErrorDatagrid from './ErrorDatagrid'
+import AnalyticsSection from './AnalyticsSection'
+import Footer from './Footer'
 import {
     AreaChart,
     Area,
@@ -114,107 +116,85 @@ function Dashboard({ onNavigateHistory, onNavigateMissingEmails, onNavigateCampa
         <div className="min-h-screen">
             <div className="animated-bg" />
 
-            {/* Top Header */}
-            <header className="sticky top-0 z-50 backdrop-blur-xl bg-surface-950/80 border-b border-surface-800/50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        {/* Logo */}
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                                style={{ background: 'var(--gradient-primary)' }}>
-                                <Zap className="w-5 h-5 text-white" strokeWidth={2.5} />
-                            </div>
-                            <div>
-                                <h1 className="text-lg font-bold text-white leading-tight">
-                                    Hard<span className="text-hardsend-400">send</span>
-                                </h1>
-                                <p className="text-[10px] text-surface-500 font-medium -mt-0.5">Server Edition</p>
-                            </div>
+            {/* Floating Premium Navbar */}
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[96%] max-w-7xl">
+                <header className="glass-card rounded-2xl px-4 sm:px-5 h-16 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-surface-700/50 bg-surface-900/60 backdrop-blur-xl">
+                    {/* Logo Area */}
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-[12px] overflow-hidden shadow-[0_0_20px_rgba(99,102,241,0.2)] border border-white/10 flex-shrink-0 bg-surface-950">
+                            <img src="/favicon.png" alt="Hardsend" className="w-full h-full object-cover" />
                         </div>
-
-                        {/* Center - Dashboard Title */}
-                        <div className="hidden md:flex items-center gap-2 text-surface-400">
-                            <LayoutDashboard className="w-4 h-4" />
-                            <span className="text-sm font-medium">Panel de Control</span>
-                        </div>
-
-                        {/* Right Side */}
-                        <div className="flex items-center gap-4">
-                            <div className="hidden sm:flex items-center gap-2 text-surface-500 text-xs">
-                                <Clock className="w-3.5 h-3.5" />
-                                <span className="font-mono tabular-nums">
-                                    {currentTime.toLocaleTimeString('es-AR', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        second: '2-digit',
-                                    })}
-                                </span>
-                            </div>
-
-                            <div className="h-6 w-px bg-surface-700" />
-
-                            {/* Carpeta Local Button */}
-                            <button
-                                onClick={onNavigateCampaign}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg
-                                    bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300
-                                    border border-emerald-500/20 hover:border-emerald-500/40
-                                    transition-all duration-200 text-sm font-medium"
-                                id="campaign-button"
-                            >
-                                <HardDrive className="w-4 h-4" />
-                                <span className="hidden sm:inline">Carpeta</span>
-                            </button>
-
-                            {/* Missing Emails Button */}
-                            <button
-                                onClick={onNavigateMissingEmails}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg
-                                    bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300
-                                    border border-amber-500/20 hover:border-amber-500/40
-                                    transition-all duration-200 text-sm font-medium"
-                                id="missing-emails-button"
-                            >
-                                <MailX className="w-4 h-4" />
-                                <span className="hidden sm:inline">Faltantes</span>
-                            </button>
-
-                            {/* Registro Button */}
-                            <button
-                                onClick={onNavigateHistory}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg
-                                    bg-hardsend-500/10 text-hardsend-400 hover:bg-hardsend-500/20 hover:text-hardsend-300
-                                    border border-hardsend-500/20 hover:border-hardsend-500/40
-                                    transition-all duration-200 text-sm font-medium"
-                                id="registro-button"
-                            >
-                                <CalendarIcon className="w-4 h-4" />
-                                <span className="hidden sm:inline">Registro</span>
-                            </button>
-
-                            <div className="flex items-center gap-3">
-                                <div className="hidden sm:block text-right">
-                                    <p className="text-surface-300 text-xs font-medium">{user}</p>
-                                    <p className="text-surface-600 text-[10px]">Superadmin</p>
-                                </div>
-                                <button
-                                    onClick={logout}
-                                    className="flex items-center gap-2 px-3 py-2 rounded-lg
-                           text-surface-400 hover:text-white hover:bg-surface-800/50
-                           transition-all duration-200 text-sm"
-                                    id="logout-button"
-                                >
-                                    <LogOut className="w-4 h-4" />
-                                    <span className="hidden sm:inline">Salir</span>
-                                </button>
+                        <div>
+                            <h1 className="text-xl font-black text-white tracking-tight leading-none mb-0.5">
+                                Hard<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">send</span>
+                            </h1>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                                <span className="text-[9px] uppercase tracking-wider text-surface-400 font-bold">Server Edition</span>
                             </div>
                         </div>
                     </div>
-                </div>
-            </header>
+
+                    {/* Right Side Actions */}
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        <div className="hidden lg:flex items-center gap-2 text-surface-500 text-xs px-3 py-1.5 rounded-lg bg-surface-950/30 border border-surface-800/50">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span className="font-mono tabular-nums font-medium">
+                                {currentTime.toLocaleTimeString('es-AR', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                })}
+                            </span>
+                        </div>
+
+                        {/* Navigation Pills */}
+                        <div className="flex items-center gap-1 sm:gap-2 bg-surface-950/30 p-1 rounded-xl border border-surface-800/50">
+                            <button
+                                onClick={onNavigateCampaign}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-surface-800 text-surface-400 hover:text-white transition-all duration-200 text-sm font-medium"
+                                title="Carpeta Local"
+                            >
+                                <HardDrive className="w-4 h-4 text-emerald-400" />
+                                <span className="hidden md:inline">Carpeta</span>
+                            </button>
+                            <button
+                                onClick={onNavigateMissingEmails}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-surface-800 text-surface-400 hover:text-white transition-all duration-200 text-sm font-medium"
+                                title="Emails Faltantes"
+                            >
+                                <MailX className="w-4 h-4 text-amber-400" />
+                                <span className="hidden md:inline">Faltantes</span>
+                            </button>
+                            <button
+                                onClick={onNavigateHistory}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-surface-800 text-surface-400 hover:text-white transition-all duration-200 text-sm font-medium"
+                                title="Registro de Envíos"
+                            >
+                                <CalendarIcon className="w-4 h-4 text-indigo-400" />
+                                <span className="hidden md:inline">Registro</span>
+                            </button>
+                        </div>
+
+                        {/* User & Logout */}
+                        <div className="flex items-center gap-3 ml-2 border-l border-surface-800/50 pl-4">
+                            <div className="hidden sm:block text-right">
+                                <p className="text-surface-300 text-xs font-bold">{user}</p>
+                            </div>
+                            <button
+                                onClick={logout}
+                                className="p-2 rounded-lg text-surface-400 hover:text-danger-400 hover:bg-danger-500/10 transition-colors"
+                                title="Cerrar sesión"
+                            >
+                                <LogOut className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                </header>
+            </div>
 
             {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-6 space-y-6">
                 {/* Stats Row */}
                 <StatsRow metrics={metrics} connected={connected} />
 
@@ -361,11 +341,14 @@ function Dashboard({ onNavigateHistory, onNavigateMissingEmails, onNavigateCampa
                     </div>
                 </div>
 
+                {/* Historical Analytics & TimeSeries Chart */}
+                <AnalyticsSection token={token} />
+
                 {/* Error Datagrid */}
                 <ErrorDatagrid />
 
-                {/* Footer */}
-                <footer className="py-6 border-t border-surface-800/50 flex flex-col items-center justify-center space-y-4">
+                {/* System Actions */}
+                <div className="py-6 border-t border-surface-800/50 flex flex-col items-center justify-center">
                     <button
                         onClick={handleResetSystem}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg
@@ -377,10 +360,9 @@ function Dashboard({ onNavigateHistory, onNavigateMissingEmails, onNavigateCampa
                         <Trash2 className="w-4 h-4" />
                         Resetear Sistema (Borrar Todo)
                     </button>
-                    <p className="text-surface-600 text-xs">
-                        © 2026 Fernando Hirschfeld & Devrow. All rights reserved. Closed Source.
-                    </p>
-                </footer>
+                </div>
+
+                <Footer />
             </main>
         </div>
     )

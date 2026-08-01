@@ -13,9 +13,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const (
-	resendAPIKey = "re_KpAqWS89_No7zyh1vkDN4bMVW9qu4MZ6J"
-	dbPath       = "C:/Users/fer/workspace/devrow/backend/hardsend_metrics.db"
+var (
+	resendAPIKey = os.Getenv("RESEND_API_KEY")
+	dbPath       = os.Getenv("DB_PATH")
 )
 
 type ResendEmail struct {

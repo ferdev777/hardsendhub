@@ -257,10 +257,7 @@ function Dropzone({ onUploadComplete }) {
                                     type="date"
                                     value={dueDate}
                                     onChange={(e) => setDueDate(e.target.value)}
-                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
-                                        text-surface-200 text-sm
-                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
-                                        transition-all duration-200"
+                                    className="input-field text-sm py-2"
                                     id="due-date-input"
                                 />
                             </div>
@@ -292,10 +289,7 @@ function Dropzone({ onUploadComplete }) {
                                     value={dailyLimit}
                                     onChange={(e) => setDailyLimit(e.target.value === '' ? '' : parseInt(e.target.value) || '')}
                                     placeholder="Ej: 500, 1000, 1500..."
-                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
-                                        text-surface-200 text-sm placeholder:text-surface-600
-                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
-                                        transition-all duration-200"
+                                    className="input-field text-sm py-2"
                                     id="daily-limit-input"
                                 />
                             </div>
@@ -327,10 +321,7 @@ function Dropzone({ onUploadComplete }) {
                                     type="text"
                                     value={emailSubject}
                                     onChange={(e) => setEmailSubject(e.target.value)}
-                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
-                                        text-surface-200 text-sm
-                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
-                                        transition-all duration-200"
+                                    className="input-field text-sm py-2"
                                     id="email-subject-input"
                                 />
                             </div>
@@ -341,10 +332,7 @@ function Dropzone({ onUploadComplete }) {
                                     value={emailBody}
                                     onChange={(e) => setEmailBody(e.target.value)}
                                     rows={3}
-                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
-                                        text-surface-200 text-sm resize-none
-                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
-                                        transition-all duration-200"
+                                    className="input-field text-sm py-2 resize-none"
                                     id="email-body-input"
                                 />
                             </div>
@@ -358,10 +346,7 @@ function Dropzone({ onUploadComplete }) {
                                     onChange={(e) => setApologyText(e.target.value)}
                                     rows={2}
                                     placeholder="Dejar vacío si no aplica"
-                                    className="w-full px-3 py-1.5 rounded-lg bg-surface-900/50 border border-surface-600/50
-                                        text-surface-200 text-sm resize-none placeholder:text-surface-600
-                                        focus:outline-none focus:border-hardsend-500/50 focus:ring-1 focus:ring-hardsend-500/20
-                                        transition-all duration-200"
+                                    className="input-field text-sm py-2 resize-none"
                                     id="email-apology-input"
                                 />
                             </div>

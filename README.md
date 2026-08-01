@@ -1,15 +1,22 @@
-# Hardsend — Sistema de Envío Masivo de Facturas
+# Hardsend — Sistema de Envío Masivo de Facturas (v2.0)
 
-**Video Digital S.R.L** — Plataforma interna para el envío masivo de facturas por email.
+**Video Digital S.R.L** — Plataforma interna y aplicación de escritorio para el envío masivo de facturas por email.
 
-## Descripción
+## Descripción & Novedades v2.0
 
-Hardsend es un sistema completo (backend + frontend) para procesar y enviar automáticamente facturas en PDF a clientes via email a través de [Resend](https://resend.com). Permite subir un archivo RAR/ZIP con miles de facturas junto con un TXT de base de datos de clientes, procesarlos y enviarlos en segundo plano con reintentos automáticos, rate limiting inteligente, y monitoreo en tiempo real.
+Hardsend es un sistema integral (App de Escritorio Wails + Backend Go + Frontend React) para procesar y enviar automáticamente facturas en PDF a clientes via email a través de [Resend](https://resend.com). Permite operar tanto con subida de archivos ZIP/RAR como con **Carpeta Local** monitoreada en tiempo real.
+
+### Novedades Principales de la Versión 2.0:
+- 🖥️ **Hardsend Desktop (Wails v2)**: Aplicación de escritorio portable nativa para Linux y Windows que embebe el servidor Go sin dependencias externas y permite usar selectores nativos de carpetas y archivos del sistema operativo.
+- 🛡️ **Normalización A Prueba de Fallos (`NormalizeInvoiceNumber`)**: Estrategia arquitectónica de normalización canónica de identificadores de factura (`[Letra] + [4 dígitos POS] + [8 dígitos Secuencia]`), inmune a ceros adicionales en nombres de archivos PDF o bases de clientes TXT.
+- 🔄 **Sincronización Manual por Uso con Resend**: Eliminación del polling de fondo y webhooks en favor de consulta bajo demanda (botón *Sincronizar con Resend* en interfaz), cuidando cuotas de API y recursos de red.
+- 🎨 **Diseño Glassmorphism Premium**: Interfaz limpia orientada a productividad, con tipografía Inter, alertas visuales claras y barra superior optimizada.
 
 ## Stack Tecnológico
 
 | Componente | Tecnología |
 |------------|-----------|
+| **Escritorio (Desktop)** | Wails v2 (Go + WebKit2GTK / WebView2) |
 | **Backend** | Go 1.23 (chi router, SQLite, WebSocket, JWT) |
 | **Frontend** | React 18 + Vite 5 + TailwindCSS 3 |
 | **Email** | Resend API (v2) |
@@ -17,6 +24,7 @@ Hardsend es un sistema completo (backend + frontend) para procesar y enviar auto
 | **Autenticación** | JWT (golang-jwt/v5) |
 | **WebSocket** | gorilla/websocket |
 | **Archivos** | ZIP nativo + RAR (nwaples/rardecode/v2) |
+
 
 ## Estructura del Proyecto
 
@@ -69,6 +77,12 @@ devrow/
 │   │   ├── test_data/          # Datos de prueba para desarrollo
 │   │   └── verify_parser/      # Verificador del parser de TXT
 │   └── static/                 # Build de producción del frontend (generado por Vite)
+├── hardsend-desktop/           # Aplicación de escritorio portable Wails v2 (v2.0)
+│   ├── main.go                 # Entry point Wails Desktop
+│   ├── app.go                  # Struct App con selectores nativos de archivos/carpetas
+│   ├── server.go               # Servidor embebido Hardsend API (puerto 8088 por defecto)
+│   ├── wails.json              # Configuración del proyecto Wails
+│   └── frontend/               # Interfaz de usuario Wails (Vite + React)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx             # Routing principal (Dashboard, History, MissingEmails, CampaignPlan)
@@ -162,6 +176,13 @@ TEMP_DIR=./tmp
 | **A** | `A0002-...` | Se envían normalmente por email (igual que B) |
 | **X** | `X0003-...` | Se omiten del envío, contadas como exitosas |
 
+### Normalización A Prueba de Fallos (`NormalizeInvoiceNumber`)
+
+El parser de Hardsend v2.0 implementa una normalización de dominio canónica para todos los identificadores de factura:
+- **Estructura Canónica**: `[Letra] + [4 dígitos POS] + [8 dígitos Secuencia]` (ej: `B0002-00338911`).
+- **Limpieza Automática**: Si un sistema de facturación externo añade ceros iniciales adicionales en el PDF (`00000149 - Factura  0B00002-000338911...`) o en el archivo TXT de clientes, el sistema los normaliza automáticamente antes de cruzar los datos.
+- **Facturas Tipo X**: La detección de facturas internas tipo X (`IsTypeXInvoice`) normaliza previamente la cadena, previniendo envíos accidentales causados por ceros sobrantes.
+
 ### Sistema de Idempotencia
 
 - Cada factura se verifica si ya fue enviada exitosamente **este mes**
@@ -233,10 +254,11 @@ TEMP_DIR=./tmp
 | GET | `/api/missing-emails/export` | Exportar a CSV |
 | POST | `/api/missing-emails/resolve` | Resolver (individual, bulk, todos) |
 
-### Webhooks (público)
+### Webhooks y Sincronización (v2.0)
 | Método | Ruta | Descripción |
 |--------|------|------------|
 | POST | `/api/webhooks/resend` | Eventos de Resend (opens, bounces, delivered, complaints) |
+| POST | `/api/resend/sync` | Sincronización manual de métricas y estados contra la API de Resend bajo demanda |
 
 ### WebSocket (autenticado via query param)
 | Ruta | Descripción |

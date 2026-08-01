@@ -6,13 +6,14 @@ import (
 
 // Campaign status constants.
 const (
-	CampaignStatusDraft     = "DRAFT"
-	CampaignStatusAnalyzing = "ANALYZING"
-	CampaignStatusReady     = "READY"
-	CampaignStatusSending   = "SENDING"
-	CampaignStatusPaused    = "PAUSED"
-	CampaignStatusCompleted = "COMPLETED"
-	CampaignStatusCancelled = "CANCELLED"
+	CampaignStatusDraft      = "DRAFT"
+	CampaignStatusAnalyzing  = "ANALYZING"
+	CampaignStatusReady      = "READY"
+	CampaignStatusSending    = "SENDING"
+	CampaignStatusInProgress = "IN_PROGRESS"
+	CampaignStatusPaused     = "PAUSED"
+	CampaignStatusCompleted  = "COMPLETED"
+	CampaignStatusCancelled  = "CANCELLED"
 )
 
 // Campaign invoice status constants (analysis result).
@@ -22,11 +23,13 @@ const (
 	CampaignInvoiceStatusSkipped   = "SKIPPED"   // Type X or already sent this month
 	CampaignInvoiceStatusSent      = "SENT"      // Already dispatched to worker pool
 	CampaignInvoiceStatusCancelled = "CANCELLED" // Campaign was cancelled
+	CampaignInvoiceStatusError     = "ERROR"     // Failed during sending or validation
 )
 
 // Job status constants.
 const (
 	JobStatusProcessing = "PROCESSING"
+	JobStatusInProgress = "IN_PROGRESS"
 	JobStatusCompleted  = "COMPLETED"
 	JobStatusFailed     = "FAILED"
 )
@@ -42,11 +45,12 @@ const (
 
 // Job represents a batch upload of a ZIP/RAR file.
 type Job struct {
-	ID         string    `json:"id"`
-	Filename   string    `json:"filename"`
-	TotalFiles int       `json:"total_files"`
-	Status     string    `json:"status"`
+	ID         string     `json:"id"`
+	Filename   string     `json:"filename"`
+	TotalFiles int        `json:"total_files"`
+	Status     string     `json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
+	StartedAt  time.Time `json:"started_at"`
 }
 
 // Invoice represents an individual PDF to be sent.
@@ -67,12 +71,13 @@ type Invoice struct {
 
 // InvoiceJob is passed through worker channels for processing.
 type InvoiceJob struct {
-	Invoice    Invoice
-	PDFPath    string
-	JobID      string
-	ClientName string
-	DueDate    string
-	Template   *EmailTemplate
+	Invoice           Invoice
+	PDFPath           string
+	JobID             string
+	ClientName        string
+	DueDate           string
+	Template          *EmailTemplate
+	CampaignInvoiceID string
 }
 
 // EmailTemplate holds configurable email content from the frontend.
@@ -208,15 +213,58 @@ type Campaign struct {
 
 // CampaignInvoice represents a single PDF analyzed within a campaign.
 type CampaignInvoice struct {
-	ID            string  `json:"id"`
-	CampaignID    string  `json:"campaign_id"`
-	InvoiceNumber string  `json:"invoice_number"`
-	ClientName    string  `json:"client_name"`
-	Email         string  `json:"email"`
-	PDFPath       string  `json:"pdf_path"`
-	Status        string  `json:"status"` // QUEUED, NO_EMAIL, SKIPPED, SENT, CANCELLED
-	Reason        *string `json:"reason"` // Why it was skipped/no_email
+	ID            string     `json:"id"`
+	CampaignID    string     `json:"campaign_id"`
+	InvoiceNumber string     `json:"invoice_number"`
+	ClientName    string     `json:"client_name"`
+	Email         string     `json:"email"`
+	PDFPath       string     `json:"pdf_path"`
+	Status        string     `json:"status"` // QUEUED, NO_EMAIL, SKIPPED, SENT, CANCELLED
+	Reason        *string    `json:"reason"` // Why it was skipped/no_email
+	ResendID      string     `json:"resend_id"`
+	Opened        bool       `json:"opened"`
+	Bounced       bool       `json:"bounced"`
+	Complained    bool       `json:"complained"`
+	Delivered     bool       `json:"delivered"`
+	OpenedAt      *time.Time `json:"opened_at"`
+	BouncedAt     *time.Time `json:"bounced_at"`
+	DeliveredAt   *time.Time `json:"delivered_at"`
 }
+
+// AnalyticsSummary represents aggregated conversion funnel and engagement metrics.
+type AnalyticsSummary struct {
+	Period          string  `json:"period"` // "realtime", "today", "week", "month", "year"
+	TotalSent       int     `json:"total_sent"`
+	TotalDelivered  int     `json:"total_delivered"`
+	TotalOpened     int     `json:"total_opened"`
+	TotalBounced    int     `json:"total_bounced"`
+	TotalComplained int     `json:"total_complained"`
+	OpenRate        float64 `json:"open_rate"`
+	BounceRate      float64 `json:"bounce_rate"`
+}
+
+// AnalyticsPoint represents a single point in the time series chart.
+type AnalyticsPoint struct {
+	Label     string `json:"label"` // e.g. "2026-07-30" or "14:00"
+	Sent      int    `json:"sent"`
+	Delivered int    `json:"delivered"`
+	Opened    int    `json:"opened"`
+	Bounced   int    `json:"bounced"`
+}
+
+// AnalyticsResponse is the payload returned by GET /api/analytics.
+type AnalyticsResponse struct {
+	Summary    *AnalyticsSummary `json:"summary"`
+	TimeSeries []AnalyticsPoint  `json:"time_series"`
+}
+
+// ResendSyncResult holds the summary of a manual Resend synchronization.
+type ResendSyncResult struct {
+	TotalFetched    int            `json:"total_fetched"`
+	UpdatedInvoices int            `json:"updated_invoices"`
+	StatusCounts    map[string]int `json:"status_counts"`
+}
+
 
 // AnalyzeCampaignRequest is the request body for POST /api/campaigns/analyze.
 type AnalyzeCampaignRequest struct {

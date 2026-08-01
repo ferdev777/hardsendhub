@@ -332,18 +332,16 @@ func (h *CampaignHandler) dispatchToWorkerPool(campaignID, jobID string, campaig
 		}
 		_ = h.db.CreateInvoice(invoice)
 
-		// Submit to existing worker pool (NO changes to pool.go)
+		// Submit to worker pool without marking SENT prematurely (for resilience/auto-recovery)
 		h.pool.Submit(models.InvoiceJob{
-			Invoice:    *invoice,
-			PDFPath:    ci.PDFPath,
-			JobID:      jobID,
-			ClientName: ci.ClientName,
-			DueDate:    dueDate,
-			Template:   template,
+			Invoice:           *invoice,
+			PDFPath:           ci.PDFPath,
+			JobID:             jobID,
+			ClientName:        ci.ClientName,
+			DueDate:           dueDate,
+			Template:          template,
+			CampaignInvoiceID: ci.ID,
 		})
-
-		// Mark campaign invoice as dispatched
-		_ = h.db.UpdateCampaignInvoiceStatus(ci.ID, models.CampaignInvoiceStatusSent)
 		queued++
 	}
 
@@ -360,3 +358,47 @@ func (h *CampaignHandler) dispatchToWorkerPool(campaignID, jobID string, campaig
 
 // ParseTXTFile is a helper used by the TXT file parsing route.
 var ParseTXTFile = parser.ParseTXTFile
+
+// ResumeActiveCampaign checks for an interrupted campaign and resumes sending QUEUED invoices.
+func (h *CampaignHandler) ResumeActiveCampaign() {
+	c, err := h.db.GetActiveCampaign()
+	if err != nil || c == nil {
+		return
+	}
+	if c.Status != models.CampaignStatusInProgress {
+		return
+	}
+
+	pending, err := h.db.GetPendingCampaignInvoices(c.ID)
+	if err != nil {
+		log.Printf("[Recovery] Failed to fetch pending invoices for campaign %s: %v", c.ID, err)
+		return
+	}
+
+	if len(pending) == 0 {
+		log.Printf("[Recovery] Campaign %s has no pending QUEUED invoices, marking as COMPLETED", c.ID)
+		_ = h.db.UpdateCampaignStatus(c.ID, models.CampaignStatusCompleted)
+		return
+	}
+
+	log.Printf("[Recovery] Found interrupted campaign %s ('%s') with %d pending invoices. Resuming...", c.ID, c.Name, len(pending))
+
+	jobID := uuid.New().String()
+	job := &models.Job{
+		ID:        jobID,
+		Status:    models.JobStatusInProgress,
+		StartedAt: time.Now(),
+	}
+	_ = h.db.CreateJob(job)
+
+	var tmpl *models.EmailTemplate
+	if c.TemplateSubject != "" {
+		tmpl = &models.EmailTemplate{
+			Subject:  c.TemplateSubject,
+			BodyText: c.TemplateBody,
+		}
+	}
+
+	h.dispatchToWorkerPool(c.ID, jobID, pending, c.DueDate, tmpl)
+}
+
