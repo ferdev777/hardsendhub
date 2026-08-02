@@ -13,6 +13,9 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed build/appicon.png
+var trayIcon []byte
+
 func main() {
 	// Eliminate GTK3 Wayland frame-callback micro-stutter by defaulting to X11/XWayland backend
 	if os.Getenv("GDK_BACKEND") == "" {
@@ -27,11 +30,15 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
+	// Start System Tray icon in background (enabled on Windows)
+	initSystray(app)
+
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "hardsend-desktop",
-		Width:  1024,
-		Height: 768,
+		Title:             "Hardsend Desktop",
+		Width:             1024,
+		Height:            768,
+		HideWindowOnClose: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
