@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -20,6 +21,12 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	for _, arg := range os.Args {
+		if arg == "--tray" || arg == "--minimized" {
+			runtime.WindowHide(ctx)
+			break
+		}
+	}
 }
 
 // GetServerURL returns the base URL of the embedded backend server
