@@ -7,7 +7,7 @@
 Hardsend es un sistema integral (App de Escritorio Wails + Backend Go + Frontend React) para procesar y enviar automáticamente facturas en PDF a clientes via email a través de [Resend](https://resend.com). Permite operar tanto con subida de archivos ZIP/RAR como con **Carpeta Local** monitoreada en tiempo real.
 
 ### Novedades Principales de la Versión 2.0:
-- 🖥️ **Hardsend Desktop (Wails v2)**: Aplicación de escritorio portable nativa para Linux y Windows que embebe el servidor Go sin dependencias externas y permite usar selectores nativos de carpetas y archivos del sistema operativo.
+- 🖥️ **Hardsend Desktop (Wails v2.0)**: Aplicación nativa de escritorio para Windows/Linux con instalador NSIS profesional, integración en **System Tray** (área de notificación al lado del reloj), ocultamiento al cerrar (`HideWindowOnClose`) y **arranque automático con Windows (`--tray`)** en segundo plano. Ver [Guía Rápida del Cliente](file:///home/fer/Documentos/workspace/hardsendhub/GUIA_RAPIDA_CLIENTE.md).
 - 🛡️ **Normalización A Prueba de Fallos (`NormalizeInvoiceNumber`)**: Estrategia arquitectónica de normalización canónica de identificadores de factura (`[Letra] + [4 dígitos POS] + [8 dígitos Secuencia]`), inmune a ceros adicionales en nombres de archivos PDF o bases de clientes TXT.
 - 🔄 **Sincronización Manual por Uso con Resend**: Eliminación del polling de fondo y webhooks en favor de consulta bajo demanda (botón *Sincronizar con Resend* en interfaz), cuidando cuotas de API y recursos de red.
 - 🎨 **Diseño Glassmorphism Premium**: Interfaz limpia orientada a productividad, con tipografía Inter, alertas visuales claras y barra superior optimizada.
@@ -386,6 +386,19 @@ go build -o hardsend.exe .
 ```
 
 El servidor arranca en `http://localhost:8080` y sirve el frontend estáticamente con fallback SPA.
+
+### Build de Hardsend Desktop y Setup Windows (.exe)
+
+Para generar el instalador oficial de Windows (con NSIS, icono en System Tray, autoarranque y descargas automáticas de WebView2):
+
+```bash
+# En terminal de Windows:
+cd hardsend-desktop
+wails build -platform windows/amd64 -nsis
+```
+
+El instalador final y el ejecutable portable quedarán en **`hardsend-desktop/build/bin/hardsend-desktop-amd64-installer.exe`**.  
+Para instrucciones detalladas de uso para el cliente final, consultar la [Guía Rápida del Cliente](file:///home/fer/Documentos/workspace/hardsendhub/GUIA_RAPIDA_CLIENTE.md).
 
 ### Deploy con systemd (Linux)
 
