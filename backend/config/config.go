@@ -36,6 +36,14 @@ type Config struct {
 	ResendRateLimit int // emails per second
 	SvixSecret      string
 
+	// Cloudflare Email settings (direct REST API or Worker proxy)
+	CFAccountID   string
+	CFAPIToken    string
+	CFWorkerURL   string
+	CFWorkerToken string
+	CFFromAddress string
+	CFRateLimit   int
+
 	// Scheduler
 	ScheduleTime string // HH:MM format, default "09:00"
 
@@ -61,7 +69,7 @@ func Load() *Config {
 		AdminPassword:      getEnv("ADMIN_PASSWORD", "modeloxvz91"),
 		JWTSecret:          getEnv("JWT_SECRET", "hardsend-devrow-production-2026-secret-key"),
 		JWTExpiry:          parseDuration(getEnv("JWT_EXPIRY", "24h")),
-		WorkerCount:        parseInt(getEnv("WORKER_COUNT", "50")),
+		WorkerCount:        parseInt(getEnv("WORKER_COUNT", "2")),
 		MaxRetries:         parseInt(getEnv("MAX_RETRIES", "3")),
 		RetryDelay:         parseDuration(getEnv("RETRY_DELAY", "60s")),
 		DailyLimit:         parseInt(getEnv("DAILY_LIMIT", "0")), // 0 = must be set from frontend
@@ -71,6 +79,12 @@ func Load() *Config {
 		ResendFrom:         getEnv("RESEND_FROM", "notificaciones@facturasvideodigital.com"),
 		ResendRateLimit:    parseInt(getEnv("RESEND_RATE_LIMIT", "10")),
 		SvixSecret:         getEnv("SVIX_SECRET", ""),
+		CFAccountID:        getEnv("CF_ACCOUNT_ID", ""),
+		CFAPIToken:         getEnv("CF_API_TOKEN", ""),
+		CFWorkerURL:        getEnv("CF_WORKER_URL", "https://app.facturasvideodigital.com"),
+		CFWorkerToken:      getEnv("CF_WORKER_TOKEN", ""),
+		CFFromAddress:      getEnv("CF_FROM_ADDRESS", "facturas@facturasvideodigital.com"),
+		CFRateLimit:        parseInt(getEnv("CF_RATE_LIMIT", "15")),
 		ScheduleTime:       getEnv("SCHEDULE_TIME", "09:00"),
 		DBPath:             getEnv("DB_PATH", "./hardsend_metrics.db"),
 		TempDir:            getEnv("TEMP_DIR", "./tmp"),

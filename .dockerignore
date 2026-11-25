@@ -1,0 +1,16 @@
+# Exclude large local test/warmup data and build artifacts from Docker context
+archivos para calentar servidores/
+pruebas_facturas/
+test_data/
+emails/
+hardsend-desktop/
+cloudflare-worker/
+frontend/node_modules/
+backend/tmp/
+backend/hardsend-server
+*.rar
+*.zip
+*.csv
+*.txt
+.git/
+

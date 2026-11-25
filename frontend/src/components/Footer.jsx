@@ -4,7 +4,7 @@ function Footer() {
     return (
         <footer className="py-8 flex flex-col items-center justify-center space-y-4 w-full">
             <a
-                href="https://devrow.com.ar"
+                href="https://www.instagram.com/devrow.software/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group flex flex-col items-center transition-transform duration-300 hover:scale-105"
@@ -14,7 +14,7 @@ function Footer() {
                     <span className="text-[#FFC107]">row</span>
                 </div>
                 <div className="text-[9px] sm:text-[10px] font-bold tracking-[0.2em] text-white mt-1 uppercase">
-                    Software - Marketing - Social Network
+                    Software - Automatización - IA
                 </div>
             </a>
         </footer>

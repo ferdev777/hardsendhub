@@ -318,3 +318,63 @@ body {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.8); box-shadow: none; }
 }
+
+/* ===== Blueprint / Technical Schematic & Terminal Brutalism (creative-ui-styles) ===== */
+.blueprint-surface {
+  background-color: #040d1a;
+  background-image:
+    linear-gradient(rgba(6, 182, 212, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(56, 189, 248, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.045) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+  background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+}
+
+.blueprint-panel {
+  background: rgba(7, 22, 44, 0.82);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  box-shadow:
+    0 0 0 1px rgba(6, 182, 212, 0.08) inset,
+    0 16px 40px -12px rgba(2, 6, 23, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+.blueprint-panel-hover {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.blueprint-panel-hover:hover {
+  border-color: rgba(34, 211, 238, 0.6);
+  box-shadow:
+    0 0 25px rgba(6, 182, 212, 0.18),
+    0 0 0 1px rgba(34, 211, 238, 0.2) inset;
+  transform: translateY(-2px);
+}
+
+.terminal-brutal-box {
+  font-family: 'JetBrains Mono', monospace;
+  background: #050a10;
+  border: 1px solid rgba(16, 185, 129, 0.55);
+  box-shadow:
+    0 0 24px rgba(16, 185, 129, 0.14),
+    inset 0 0 28px rgba(16, 185, 129, 0.04);
+}
+
+.crt-scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 0, 0, 0.32) 50%
+  );
+  background-size: 100% 4px;
+}
+
+@keyframes cursorBlink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.animate-cursor-blink {
+  animation: cursorBlink 1s steps(2, start) infinite;
+}
+

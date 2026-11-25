@@ -19,10 +19,14 @@ StartLimitBurst=3
 Environment=PORT=8080
 Environment=DB_PATH=/opt/hardsend/hardsend_metrics.db
 Environment=TEMP_DIR=/opt/hardsend/tmp
-Environment=AWS_REGION=us-east-1
-Environment=SES_FROM_ADDRESS=noreply@devrow.com
 Environment=WORKER_COUNT=50
+Environment=DAILY_LIMIT=1800
 Environment=JWT_SECRET=hardsend-production-secret-change-me
+Environment=CF_WORKER_URL=https://hardsend-mail.tu-dominio.workers.dev/send
+Environment=CF_WORKER_TOKEN=your-worker-secret-token
+Environment=CF_FROM_ADDRESS=facturacion@tu-dominio.com
+Environment=RESEND_API_KEY=re_your_resend_api_key
+Environment=SVIX_SECRET=whsec_your_svix_secret
 
 # Security
 NoNewPrivileges=true

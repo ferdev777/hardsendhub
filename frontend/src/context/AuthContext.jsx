@@ -54,6 +54,26 @@ export function AuthProvider({ children }) {
         return data
     }
 
+    const loginWithGoogle = async (credential) => {
+        const res = await fetch(`${API_BASE}/api/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential }),
+        })
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            throw new Error(data.error || 'Error al autenticar con Google')
+        }
+
+        const data = await res.json()
+        setToken(data.token)
+        setUser(data.user)
+        localStorage.setItem('hardsend_token', data.token)
+        localStorage.setItem('hardsend_user', data.user)
+        return data
+    }
+
     const logout = () => {
         setToken(null)
         setUser(null)
@@ -67,6 +87,7 @@ export function AuthProvider({ children }) {
         isAuthenticated: !!token,
         loading,
         login,
+        loginWithGoogle,
         logout,
     }
 

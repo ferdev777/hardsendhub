@@ -13,16 +13,20 @@ import (
 	"time"
 
 	"hardsend/database"
+	"hardsend/models"
+	"hardsend/reputation"
 )
 
 type WebhookHandler struct {
 	db         *database.DB
+	reputation *reputation.Store
 	svixSecret string
 }
 
-func NewWebhookHandler(db *database.DB, svixSecret string) *WebhookHandler {
+func NewWebhookHandler(db *database.DB, repStore *reputation.Store, svixSecret string) *WebhookHandler {
 	return &WebhookHandler{
 		db:         db,
+		reputation: repStore,
 		svixSecret: svixSecret,
 	}
 }
@@ -95,11 +99,25 @@ func (h *WebhookHandler) HandleResendWebhook(w http.ResponseWriter, r *http.Requ
 		log.Printf("[Webhook] Failed to update engagement for EmailID %s: %v", payload.Data.EmailID, err)
 	}
 
-	// If hard bounce or complaint, add to automatic suppression blacklist
+	// If hard bounce or complaint, add to automatic suppression blacklist (Capa 1)
 	if (payload.Type == "email.bounced" || payload.Type == "email.complained") && len(payload.Data.To) > 0 {
 		email := payload.Data.To[0]
 		reason := payload.Type
-		_ = h.db.AddToBlacklist(email, reason, invoiceID)
+		if h.reputation != nil {
+			_ = h.reputation.MarkBounced(email, reason)
+		}
+		// Also mark in campaign missing_emails for UX reporting
+		me := &models.MissingEmail{
+			ID:            "bounce-" + payload.Data.EmailID,
+			JobID:         "webhook", // pseudo-job
+			InvoiceNumber: invoiceID,
+			ClientName:    "Unknown",
+			Email:         email,
+			Reason:        "bounced",
+			CreatedAt:     time.Now(),
+		}
+		_ = h.db.CreateMissingEmail(me)
+
 		log.Printf("[Webhook] Added %s to blacklist due to %s", email, reason)
 	}
 
@@ -149,4 +167,67 @@ func verifySvixSignature(secret string, headers http.Header, body []byte) bool {
 	}
 
 	return false
+}
+
+// CFWebhookPayload is the payload expected from the Cloudflare Worker when MailChannels reports a bounce/delivery.
+type CFWebhookPayload struct {
+	EmailID   string `json:"email_id"`
+	InvoiceID string `json:"invoice_id"`
+	Email     string `json:"email"`
+	Status    string `json:"status"` // "delivered", "bounced", "complained"
+	Reason    string `json:"reason"` // detail if bounced
+	Timestamp string `json:"timestamp"`
+}
+
+// HandleCloudflareWebhook handles engagement events from the CF Worker.
+func (h *WebhookHandler) HandleCloudflareWebhook(w http.ResponseWriter, r *http.Request) {
+	// Simple auth via Bearer token (should match CF_WORKER_TOKEN)
+	// For production, the worker sends back the same token it requires.
+	authHeader := r.Header.Get("Authorization")
+	if h.svixSecret != "" && authHeader != "Bearer "+h.svixSecret {
+		// Just reusing svixSecret as the shared secret for simplicity, or we could use a new CF_WEBHOOK_SECRET
+		log.Println("[Webhook] Invalid CF webhook token")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload CFWebhookPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	log.Printf("[Webhook] CF event: %s for Email: %s (Invoice: %s)", payload.Status, payload.Email, payload.InvoiceID)
+
+	eventTime := time.Now()
+	if payload.Timestamp != "" {
+		if t, err := time.Parse(time.RFC3339, payload.Timestamp); err == nil {
+			eventTime = t
+		}
+	}
+
+	// Map CF status to internal status format
+	eventType := "email." + payload.Status // email.delivered, email.bounced, etc.
+
+	_ = h.db.UpdateCampaignInvoiceEngagement(payload.EmailID, payload.InvoiceID, eventType, eventTime)
+
+	if payload.Status == "bounced" || payload.Status == "complained" {
+		if h.reputation != nil {
+			_ = h.reputation.MarkBounced(payload.Email, payload.Status)
+		}
+		me := &models.MissingEmail{
+			ID:            "bounce-" + payload.EmailID,
+			JobID:         "webhook",
+			InvoiceNumber: payload.InvoiceID,
+			ClientName:    "Unknown",
+			Email:         payload.Email,
+			Reason:        payload.Status,
+			CreatedAt:     time.Now(),
+		}
+		_ = h.db.CreateMissingEmail(me)
+		log.Printf("[Webhook] Added %s to blacklist due to CF %s", payload.Email, payload.Status)
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

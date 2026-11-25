@@ -4,6 +4,46 @@ import (
 	"time"
 )
 
+// EmailReputation status constants.
+const (
+	ReputationStatusVerified     = "verified"      // Delivered successfully at least once (from CSV or webhook)
+	ReputationStatusUntested     = "untested"       // New client — no send history
+	ReputationStatusBounced      = "bounced"        // Hard bounced — blacklisted
+	ReputationStatusCashierOnly  = "cashier_only"   // Voluntarily excluded (pays in person)
+)
+
+// CampaignInvoice wave priority constants (used by wave-ordered SQL query).
+const (
+	WaveVerified = 0 // Wave 1: verified emails — sent first, lowest risk
+	WaveUntested = 1 // Wave 2: new/untested clients — sent after Wave 1 finishes
+)
+
+// EmailReputation tracks the send history and reputation of a single email address.
+type EmailReputation struct {
+	Email        string     `json:"email"`
+	Status       string     `json:"status"`         // verified, untested, bounced, cashier_only
+	BounceReason *string    `json:"bounce_reason"`  // raw reason from provider webhook
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// DryRunSummary is the pre-flight semaphore shown in CampaignPlan before sending.
+type DryRunSummary struct {
+	CampaignID         string `json:"campaign_id"`
+	VerifiedCount      int    `json:"verified_count"`      // GREEN  — Wave 1, 0% risk
+	UntestedCount      int    `json:"untested_count"`      // BLUE   — Wave 2, new clients
+	FixableCount       int    `json:"fixable_count"`       // YELLOW — typo-detected, needs review
+	SuppressedCount    int    `json:"suppressed_count"`    // GREY   — blacklisted or cashier_only
+	PDFErrorCount      int    `json:"pdf_error_count"`     // RED    — missing PDF or > 3.4MB
+	TotalReadyToSend   int    `json:"total_ready_to_send"` // verified + untested
+}
+
+// ReputationSeederResult holds the summary after importing CSVs into email_reputation.
+type ReputationSeederResult struct {
+	BouncedInserted  int `json:"bounced_inserted"`
+	DeliveredInserted int `json:"delivered_inserted"`
+	DuplicatesSkipped int `json:"duplicates_skipped"`
+}
+
 // Campaign status constants.
 const (
 	CampaignStatusDraft      = "DRAFT"
@@ -105,12 +145,22 @@ type MetricsUpdate struct {
 	DailySent            int     `json:"daily_sent"`
 	DailyMax             int     `json:"daily_max"`
 	Paused               bool    `json:"paused"`
+	// Bounce rate tracking (Capa 4 — real-time monitor for circuit breaker)
+	BounceRate           float64 `json:"bounce_rate"`            // bounce_count / success_count * 100
+	BounceAlertTriggered bool    `json:"bounce_alert_triggered"` // true if circuit breaker paused due to bounce rate
+	WaveNumber           int     `json:"wave_number"`            // 1 = verified wave, 2 = untested wave
+	EmailProvider        string  `json:"email_provider"`         // "resend" or "cloudflare"
 }
 
 // LoginRequest represents the login API payload.
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+// GoogleLoginRequest represents the Google OAuth login API payload.
+type GoogleLoginRequest struct {
+	Credential string `json:"credential"`
 }
 
 // LoginResponse is the response after successful authentication.
@@ -207,6 +257,11 @@ type Campaign struct {
 	ValidCount       int       `json:"valid_count"`
 	NoEmailCount     int       `json:"no_email_count"`
 	SkippedCount     int       `json:"skipped_count"`
+	VerifiedCount    int       `json:"verified_count"`
+	UntestedCount    int       `json:"untested_count"`
+	FixableCount     int       `json:"fixable_count"`
+	SuppressedCount  int       `json:"suppressed_count"`
+	PDFErrorCount    int       `json:"pdf_error_count"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -277,13 +332,18 @@ type AnalyzeCampaignRequest struct {
 
 // CampaignSummary is the response after analyzing a campaign.
 type CampaignSummary struct {
-	CampaignID  string `json:"campaign_id"`
-	Total       int    `json:"total"`
-	Valid       int    `json:"valid"`
-	NoEmail     int    `json:"no_email"`
-	Skipped     int    `json:"skipped"`
-	Status      string `json:"status"`
-	ElapsedMs   int64  `json:"elapsed_ms"`
+	CampaignID      string `json:"campaign_id"`
+	Total           int    `json:"total"`
+	Valid           int    `json:"valid"`
+	NoEmail         int    `json:"no_email"`
+	Skipped         int    `json:"skipped"`
+	VerifiedCount   int    `json:"verified_count"`   // GREEN
+	UntestedCount   int    `json:"untested_count"`   // BLUE
+	FixableCount    int    `json:"fixable_count"`    // YELLOW
+	SuppressedCount int    `json:"suppressed_count"` // GREY
+	PDFErrorCount   int    `json:"pdf_error_count"`  // RED
+	Status          string `json:"status"`
+	ElapsedMs       int64  `json:"elapsed_ms"`
 }
 
 // CampaignDetailResponse is the full campaign detail with invoice list.

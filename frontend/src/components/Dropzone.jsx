@@ -17,11 +17,12 @@ import {
 function Dropzone({ onUploadComplete }) {
     const { token } = useAuth()
     const [uploading, setUploading] = useState(false)
+    const [streamProgress, setStreamProgress] = useState(null)
     const [uploadResult, setUploadResult] = useState(null)
     const [selectedFiles, setSelectedFiles] = useState([])
     const [txtFile, setTxtFile] = useState(null)
     const [dueDate, setDueDate] = useState('')
-    const [dailyLimit, setDailyLimit] = useState('')
+    const [dailyLimit, setDailyLimit] = useState('200')
     const [emailSubject, setEmailSubject] = useState('FACTURA MENSUAL VIDEO DIGITAL S.R.L')
     const [emailBody, setEmailBody] = useState('Se adjunta la factura mensual correspondiente al servicio de Cable e Internet de VIDEO DIGITAL S.R.L.')
     const [apologyText, setApologyText] = useState('')
@@ -51,6 +52,8 @@ function Dropzone({ onUploadComplete }) {
             'application/x-zip-compressed': ['.zip'],
             'application/x-rar-compressed': ['.rar'],
             'application/vnd.rar': ['.rar'],
+            'application/x-rar': ['.rar'],
+            'application/octet-stream': ['.rar', '.zip'],
             'text/plain': ['.txt'],
         },
         multiple: true,
@@ -69,9 +72,123 @@ function Dropzone({ onUploadComplete }) {
         if (!txtFile && selectedFiles.length === 0) return
 
         setUploading(true)
+        setStreamProgress(null)
         setUploadResult(null)
 
         try {
+            const CHUNK_SIZE = 20 * 1024 * 1024 // 20 MB per chunk (safely below Cloudflare 100MB limit)
+            const largeArchive = selectedFiles.find(
+                (f) =>
+                    f.size > CHUNK_SIZE &&
+                    (f.name.toLowerCase().endsWith('.rar') || f.name.toLowerCase().endsWith('.zip'))
+            )
+
+            const template = {
+                subject: emailSubject,
+                body_text: emailBody,
+                apology_text: apologyText,
+            }
+
+            let formattedDueDate = ''
+            if (dueDate) {
+                const [year, month, day] = dueDate.split('-')
+                formattedDueDate = `${day}/${month}/${year}`
+            }
+
+            // Stream mode for large RAR/ZIP archives (>20MB)
+            if (largeArchive) {
+                const initForm = new FormData()
+                if (txtFile) {
+                    initForm.append('txt_file', txtFile)
+                }
+                initForm.append('init_stream', 'true')
+                initForm.append('archive_name', largeArchive.name)
+                if (formattedDueDate) initForm.append('due_date', formattedDueDate)
+                initForm.append('daily_limit', dailyLimit.toString())
+                initForm.append('email_template', JSON.stringify(template))
+                initForm.append('force_resend', forceResend.toString())
+
+                const initRes = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: initForm,
+                })
+                let initData = {}
+                const rawInitText = await initRes.text().catch(() => '')
+                try {
+                    initData = JSON.parse(rawInitText)
+                } catch (_) {
+                    initData = { error: rawInitText ? `Error del servidor: ${rawInitText.slice(0, 150)}` : `Error del servidor (HTTP ${initRes.status})` }
+                }
+                if (!initRes.ok) {
+                    setUploadResult({ success: false, message: initData.error || 'Error al inicializar stream' })
+                    return
+                }
+
+                const { stream_id: streamId, job_id: jobId } = initData
+                const totalChunks = Math.ceil(largeArchive.size / CHUNK_SIZE)
+                let lastResponse = initData
+
+                for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+                    const start = chunkIdx * CHUNK_SIZE
+                    const end = Math.min(start + CHUNK_SIZE, largeArchive.size)
+                    const isEOF = end >= largeArchive.size
+                    const slice = largeArchive.slice(start, end)
+
+                    setStreamProgress({
+                        chunk: chunkIdx + 1,
+                        totalChunks,
+                        percent: Math.round((end / largeArchive.size) * 100),
+                        queued: lastResponse.queued || 0,
+                        blocked: lastResponse.blocked || 0,
+                    })
+
+                    const chunkRes = await fetch(
+                        `/api/upload/chunk?stream_id=${encodeURIComponent(streamId)}&eof=${isEOF}`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/octet-stream',
+                            },
+                            body: slice,
+                        }
+                    )
+                    let chunkData = {}
+                    const rawChunkText = await chunkRes.text().catch(() => '')
+                    try {
+                        chunkData = JSON.parse(rawChunkText)
+                    } catch (_) {
+                        chunkData = { error: rawChunkText ? `Error en fragmento ${chunkIdx + 1}: ${rawChunkText.slice(0, 150)}` : `Error del servidor (HTTP ${chunkRes.status})` }
+                    }
+                    if (!chunkRes.ok) {
+                        setUploadResult({
+                            success: false,
+                            message: chunkData.error || 'Error durante el envío de fragmentos',
+                        })
+                        return
+                    }
+
+                    lastResponse = chunkData
+                    if (chunkData.quota_reached) {
+                        break
+                    }
+                }
+
+                setUploadResult({
+                    success: true,
+                    message:
+                        lastResponse.message ||
+                        `Procesamiento iniciado: ${lastResponse.queued || 0} facturas verificadas en cola.`,
+                    jobId,
+                })
+                setSelectedFiles([])
+                setTxtFile(null)
+                if (onUploadComplete) onUploadComplete({ job_id: jobId, ...lastResponse })
+                return
+            }
+
+            // Standard mode for smaller files or individual PDFs
             const formData = new FormData()
 
             if (txtFile) {
@@ -82,23 +199,11 @@ function Dropzone({ onUploadComplete }) {
                 formData.append('files', file)
             })
 
-            // Add due date in DD/MM/YYYY format if set
-            if (dueDate) {
-                // Parse directly from YYYY-MM-DD to avoid timezone issues
-                const [year, month, day] = dueDate.split('-')
-                const formatted = `${day}/${month}/${year}`
-                formData.append('due_date', formatted)
+            if (formattedDueDate) {
+                formData.append('due_date', formattedDueDate)
             }
 
-            // Add daily limit (required)
             formData.append('daily_limit', dailyLimit.toString())
-
-            // Add email template as JSON
-            const template = {
-                subject: emailSubject,
-                body_text: emailBody,
-                apology_text: apologyText,
-            }
             formData.append('email_template', JSON.stringify(template))
             formData.append('force_resend', forceResend.toString())
 
@@ -110,7 +215,13 @@ function Dropzone({ onUploadComplete }) {
                 body: formData,
             })
 
-            const data = await res.json()
+            let data = {}
+            try {
+                data = await res.json()
+            } catch (_) {
+                const text = await res.text().catch(() => '')
+                data = { error: text ? `Error del servidor: ${text.slice(0, 150)}` : `Error del servidor (HTTP ${res.status})` }
+            }
 
             if (res.ok) {
                 setUploadResult({ success: true, message: data.message, jobId: data.job_id })
@@ -121,9 +232,11 @@ function Dropzone({ onUploadComplete }) {
                 setUploadResult({ success: false, message: data.error || 'Error al subir archivos' })
             }
         } catch (err) {
-            setUploadResult({ success: false, message: 'Error de conexión al servidor' })
+            console.error('[Upload] Error:', err)
+            setUploadResult({ success: false, message: err.message || 'Error de conexión al servidor' })
         } finally {
             setUploading(false)
+            setStreamProgress(null)
         }
     }
 
@@ -380,18 +493,20 @@ function Dropzone({ onUploadComplete }) {
                     {/* Upload Button */}
                     <button
                         onClick={handleUpload}
-                        disabled={uploading || !dailyLimit}
-                        className={`w-full flex items-center justify-center gap-2 mt-3 ${(!dailyLimit) ? 'btn-primary opacity-50 cursor-not-allowed' : 'btn-primary'}`}
+                        disabled={uploading}
+                        className="w-full flex items-center justify-center gap-2 mt-3 btn-primary"
                     >
                         {uploading ? (
                             <>
                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                Subiendo archivos...
+                                {streamProgress
+                                    ? `Extrayendo y persistiendo en R2/D1 (${streamProgress.percent}%) — ${streamProgress.queued} facturas...`
+                                    : 'Subiendo archivos...'}
                             </>
                         ) : (
                             <>
                                 <Upload className="w-5 h-5" />
-                                Iniciar Procesamiento
+                                Iniciar Carga y Persistir Campaña
                             </>
                         )}
                     </button>

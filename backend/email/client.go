@@ -14,13 +14,8 @@ import (
 	"github.com/resend/resend-go/v2"
 )
 
-// EmailSender defines the interface for sending emails.
-// This allows for mocking in unit tests and follows
-// Clean Architecture principles for high-profile Go projects.
-type EmailSender interface {
-	SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNumber, pdfPath, clientName, invoiceID, dueDate string, tmpl *models.EmailTemplate) (string, error)
-}
-
+// EmailSender is defined in provider.go as a type alias for EmailProvider.
+// This file implements the Resend provider.
 
 // Client wraps the Resend client with rate limiting.
 // Implements the EmailSender interface.
@@ -32,8 +27,8 @@ type Client struct {
 	mu           sync.Mutex
 }
 
-// Ensure Client implements EmailSender
-var _ EmailSender = (*Client)(nil)
+// Ensure Client implements EmailProvider
+var _ EmailProvider = (*Client)(nil)
 
 // NewClient creates a new Resend client with rate limiting.
 func NewClient(apiKey, fromAddress string, rateLimit int) (*Client, error) {
@@ -133,6 +128,12 @@ func (c *Client) SendInvoiceEmail(ctx context.Context, recipientEmail, invoiceNu
 
 	return resp.Id, nil
 }
+
+// Name returns the provider identifier for logging and metrics.
+func (c *Client) Name() string {
+	return "resend"
+}
+
 
 // buildInvoiceHTML generates the HTML email body matching the Video Digital template.
 func buildInvoiceHTML(clientName, invoiceNumber, dueDate string, tmpl *models.EmailTemplate) string {
@@ -332,4 +333,17 @@ Video Digital S.R.L
 
 ---
 Este es un envio automatico. Por favor no responda este correo.`, header, greeting, body, invoiceNumber, apology)
+}
+
+// SendSystemEmail sends a text/html email without attachments (e.g. for reports).
+func (c *Client) SendSystemEmail(ctx context.Context, to, subject, htmlBody string) error {
+	params := &resend.SendEmailRequest{
+		From:    c.fromAddress,
+		To:      []string{to},
+		Subject: subject,
+		Html:    htmlBody,
+	}
+
+	_, err := c.resendClient.Emails.SendWithContext(ctx, params)
+	return err
 }

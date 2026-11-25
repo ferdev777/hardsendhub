@@ -12,10 +12,11 @@ import (
 // CreateCampaign inserts a new campaign record.
 func (db *DB) CreateCampaign(c *models.Campaign) error {
 	_, err := db.conn.Exec(
-		`INSERT INTO campaigns (id, name, folder_path, txt_path, due_date, template_subject, template_body, status, total_invoices, valid_count, no_email_count, skipped_count, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO campaigns (id, name, folder_path, txt_path, due_date, template_subject, template_body, status, total_invoices, valid_count, no_email_count, skipped_count, verified_count, untested_count, fixable_count, suppressed_count, pdf_error_count, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.ID, c.Name, c.FolderPath, c.TxtPath, c.DueDate, c.TemplateSubject, c.TemplateBody,
 		c.Status, c.TotalInvoices, c.ValidCount, c.NoEmailCount, c.SkippedCount,
+		c.VerifiedCount, c.UntestedCount, c.FixableCount, c.SuppressedCount, c.PDFErrorCount,
 		c.CreatedAt, c.UpdatedAt,
 	)
 	return err
@@ -25,13 +26,14 @@ func (db *DB) CreateCampaign(c *models.Campaign) error {
 func (db *DB) GetCampaign(campaignID string) (*models.Campaign, error) {
 	row := db.conn.QueryRow(
 		`SELECT id, name, folder_path, txt_path, due_date, template_subject, template_body, status,
-		        total_invoices, valid_count, no_email_count, skipped_count, created_at, updated_at
+		        total_invoices, valid_count, no_email_count, skipped_count, verified_count, untested_count, fixable_count, suppressed_count, pdf_error_count, created_at, updated_at
 		 FROM campaigns WHERE id = ?`, campaignID,
 	)
 	c := &models.Campaign{}
 	err := row.Scan(
 		&c.ID, &c.Name, &c.FolderPath, &c.TxtPath, &c.DueDate, &c.TemplateSubject, &c.TemplateBody,
 		&c.Status, &c.TotalInvoices, &c.ValidCount, &c.NoEmailCount, &c.SkippedCount,
+		&c.VerifiedCount, &c.UntestedCount, &c.FixableCount, &c.SuppressedCount, &c.PDFErrorCount,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
@@ -44,7 +46,7 @@ func (db *DB) GetCampaign(campaignID string) (*models.Campaign, error) {
 func (db *DB) GetActiveCampaign() (*models.Campaign, error) {
 	row := db.conn.QueryRow(
 		`SELECT id, name, folder_path, txt_path, due_date, template_subject, template_body, status,
-		        total_invoices, valid_count, no_email_count, skipped_count, created_at, updated_at
+		        total_invoices, valid_count, no_email_count, skipped_count, verified_count, untested_count, fixable_count, suppressed_count, pdf_error_count, created_at, updated_at
 		 FROM campaigns
 		 WHERE status NOT IN ('COMPLETED', 'CANCELLED')
 		 ORDER BY created_at DESC LIMIT 1`,
@@ -53,6 +55,7 @@ func (db *DB) GetActiveCampaign() (*models.Campaign, error) {
 	err := row.Scan(
 		&c.ID, &c.Name, &c.FolderPath, &c.TxtPath, &c.DueDate, &c.TemplateSubject, &c.TemplateBody,
 		&c.Status, &c.TotalInvoices, &c.ValidCount, &c.NoEmailCount, &c.SkippedCount,
+		&c.VerifiedCount, &c.UntestedCount, &c.FixableCount, &c.SuppressedCount, &c.PDFErrorCount,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -74,11 +77,14 @@ func (db *DB) UpdateCampaignStatus(campaignID, status string) error {
 }
 
 // UpdateCampaignCounts updates the invoice counts after analysis.
-func (db *DB) UpdateCampaignCounts(campaignID string, total, valid, noEmail, skipped int) error {
+func (db *DB) UpdateCampaignCounts(campaignID string, summary models.DryRunSummary, total, valid, noEmail, skipped int) error {
 	_, err := db.conn.Exec(
-		`UPDATE campaigns SET total_invoices = ?, valid_count = ?, no_email_count = ?, skipped_count = ?, updated_at = ?
+		`UPDATE campaigns SET total_invoices = ?, valid_count = ?, no_email_count = ?, skipped_count = ?,
+		 verified_count = ?, untested_count = ?, fixable_count = ?, suppressed_count = ?, pdf_error_count = ?, updated_at = ?
 		 WHERE id = ?`,
-		total, valid, noEmail, skipped, time.Now(), campaignID,
+		total, valid, noEmail, skipped,
+		summary.VerifiedCount, summary.UntestedCount, summary.FixableCount, summary.SuppressedCount, summary.PDFErrorCount,
+		time.Now(), campaignID,
 	)
 	return err
 }
@@ -168,6 +174,44 @@ func (db *DB) GetPendingCampaignInvoices(campaignID string) ([]models.CampaignIn
 	query := `SELECT id, campaign_id, invoice_number, client_name, email, pdf_path, status, reason, resend_id, opened, bounced, complained, delivered, opened_at, bounced_at, delivered_at
 			  FROM campaign_invoices WHERE campaign_id = ? AND status = 'QUEUED'
 			  ORDER BY invoice_number`
+
+	rows, err := db.conn.Query(query, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []models.CampaignInvoice
+	for rows.Next() {
+		var ci models.CampaignInvoice
+		if err := rows.Scan(
+			&ci.ID, &ci.CampaignID, &ci.InvoiceNumber, &ci.ClientName, &ci.Email, &ci.PDFPath, &ci.Status, &ci.Reason,
+			&ci.ResendID, &ci.Opened, &ci.Bounced, &ci.Complained, &ci.Delivered, &ci.OpenedAt, &ci.BouncedAt, &ci.DeliveredAt,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, ci)
+	}
+	return results, nil
+}
+
+// GetPendingCampaignInvoicesWaveOrdered retrieves QUEUED invoices for a campaign
+// sorted by wave priority: Wave 1 (verified in email_reputation) first, Wave 2 (all others) second.
+// This is Capa 3 of the Anti-Bounce Engine — ensures 0% bounce rate in the first wave.
+func (db *DB) GetPendingCampaignInvoicesWaveOrdered(campaignID string) ([]models.CampaignInvoice, error) {
+	// Subquery join against email_reputation to prioritize verified emails.
+	// Invoices whose email is NOT in email_reputation get wave=1 (untested, Wave 2).
+	query := `
+		SELECT ci.id, ci.campaign_id, ci.invoice_number, ci.client_name, ci.email,
+		       ci.pdf_path, ci.status, ci.reason, ci.resend_id,
+		       ci.opened, ci.bounced, ci.complained, ci.delivered,
+		       ci.opened_at, ci.bounced_at, ci.delivered_at
+		FROM campaign_invoices ci
+		LEFT JOIN email_reputation er ON LOWER(ci.email) = LOWER(er.email)
+		WHERE ci.campaign_id = ? AND ci.status = 'QUEUED'
+		ORDER BY
+		  CASE WHEN er.status = 'verified' THEN 0 ELSE 1 END,
+		  ci.invoice_number`
 
 	rows, err := db.conn.Query(query, campaignID)
 	if err != nil {

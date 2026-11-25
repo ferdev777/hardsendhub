@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import Login from './components/Login'
+import Landing from './components/Landing'
 import Dashboard from './components/Dashboard'
 import History from './components/History'
 import MissingEmails from './components/MissingEmails'
-import CampaignPlan from './components/CampaignPlan'
+import LogsViewer from './components/LogsViewer'
+import SuppressionsView from './components/SuppressionsView'
 
 function AppContent() {
     const { isAuthenticated, loading } = useAuth()
@@ -23,7 +24,7 @@ function AppContent() {
     }
 
     if (!isAuthenticated) {
-        return <Login />
+        return <Landing />
     }
 
     if (currentPage === 'history') {
@@ -34,29 +35,33 @@ function AppContent() {
         return <MissingEmails onBack={() => setCurrentPage('dashboard')} />
     }
 
-    if (currentPage === 'campaign') {
-        return (
-            <CampaignPlan
-                onBack={() => setCurrentPage('dashboard')}
-                onStarted={() => setCurrentPage('dashboard')}
-            />
-        )
+    if (currentPage === 'logs') {
+        return <LogsViewer onBack={() => setCurrentPage('dashboard')} />
+    }
+
+    if (currentPage === 'suppressions') {
+        return <SuppressionsView onBack={() => setCurrentPage('dashboard')} />
     }
 
     return (
         <Dashboard
             onNavigateHistory={() => setCurrentPage('history')}
             onNavigateMissingEmails={() => setCurrentPage('missing-emails')}
-            onNavigateCampaign={() => setCurrentPage('campaign')}
+            onNavigateLogs={() => setCurrentPage('logs')}
+            onNavigateSuppressions={() => setCurrentPage('suppressions')}
         />
     )
 }
 
+import { GoogleOAuthProvider } from '@react-oauth/google'
+
 function App() {
     return (
-        <AuthProvider>
-            <AppContent />
-        </AuthProvider>
+        <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "1234567890-placeholder.apps.googleusercontent.com"}>
+            <AuthProvider>
+                <AppContent />
+            </AuthProvider>
+        </GoogleOAuthProvider>
     )
 }
 

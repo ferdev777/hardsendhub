@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,8 +16,11 @@ import (
 	"hardsend/analyzer"
 	"hardsend/config"
 	"hardsend/database"
+	"hardsend/email"
 	"hardsend/models"
 	"hardsend/parser"
+	"hardsend/reputation"
+	"hardsend/storage"
 	"hardsend/workers"
 )
 
@@ -24,15 +30,17 @@ type CampaignHandler struct {
 	pool     *workers.Pool
 	cfg      *config.Config
 	analyzer *analyzer.Analyzer
+	email    email.EmailProvider
 }
 
 // NewCampaignHandler creates a new campaign handler.
-func NewCampaignHandler(db *database.DB, pool *workers.Pool, cfg *config.Config) *CampaignHandler {
+func NewCampaignHandler(db *database.DB, pool *workers.Pool, cfg *config.Config, repStore *reputation.Store, mxCache *reputation.MXCache, emailProvider email.EmailProvider) *CampaignHandler {
 	return &CampaignHandler{
 		db:       db,
 		pool:     pool,
 		cfg:      cfg,
-		analyzer: analyzer.New(db, cfg.WorkerCount),
+		analyzer: analyzer.New(db, repStore, mxCache, cfg.WorkerCount),
+		email:    emailProvider,
 	}
 }
 
@@ -100,13 +108,18 @@ func (h *CampaignHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.CampaignSummary{
-		CampaignID:  campaignID,
-		Total:       result.Total,
-		Valid:       result.Valid,
-		NoEmail:     result.NoEmail,
-		Skipped:     result.Skipped,
-		Status:      models.CampaignStatusReady,
-		ElapsedMs:   result.ElapsedMs,
+		CampaignID:      campaignID,
+		Total:           result.Total,
+		Valid:           result.Valid,
+		NoEmail:         result.NoEmail,
+		Skipped:         result.Skipped,
+		VerifiedCount:   result.VerifiedCount,
+		UntestedCount:   result.UntestedCount,
+		FixableCount:    result.FixableCount,
+		SuppressedCount: result.SuppressedCount,
+		PDFErrorCount:   result.PDFErrorCount,
+		Status:          models.CampaignStatusReady,
+		ElapsedMs:       result.ElapsedMs,
 	})
 }
 
@@ -153,13 +166,18 @@ func (h *CampaignHandler) Rescan(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.CampaignSummary{
-		CampaignID:  campaignID,
-		Total:       result.Total,
-		Valid:       result.Valid,
-		NoEmail:     result.NoEmail,
-		Skipped:     result.Skipped,
-		Status:      models.CampaignStatusReady,
-		ElapsedMs:   result.ElapsedMs,
+		CampaignID:      campaignID,
+		Total:           result.Total,
+		Valid:           result.Valid,
+		NoEmail:         result.NoEmail,
+		Skipped:         result.Skipped,
+		VerifiedCount:   result.VerifiedCount,
+		UntestedCount:   result.UntestedCount,
+		FixableCount:    result.FixableCount,
+		SuppressedCount: result.SuppressedCount,
+		PDFErrorCount:   result.PDFErrorCount,
+		Status:          models.CampaignStatusReady,
+		ElapsedMs:       result.ElapsedMs,
 	})
 }
 
@@ -232,13 +250,27 @@ func (h *CampaignHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if campaign.Status != models.CampaignStatusReady && campaign.Status != models.CampaignStatusPaused {
-		http.Error(w, fmt.Sprintf(`{"error":"No se puede iniciar una campaña en estado %s. Debe estar en READY o PAUSED."}`, campaign.Status), http.StatusConflict)
+	if campaign.Status != models.CampaignStatusReady && campaign.Status != models.CampaignStatusPaused && campaign.Status != models.CampaignStatusInProgress {
+		http.Error(w, fmt.Sprintf(`{"error":"No se puede iniciar una campaña en estado %s. Debe estar en READY, PAUSED o IN_PROGRESS."}`, campaign.Status), http.StatusConflict)
 		return
 	}
 
-	// Get QUEUED invoices
-	invoices, err := h.db.GetCampaignInvoices(campaignID, models.CampaignInvoiceStatusQueued)
+	// Read optional daily_limit and apology_text from request body
+	var startReq struct {
+		DailyLimit  int    `json:"daily_limit"`
+		ApologyText string `json:"apology_text"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&startReq)
+	if startReq.DailyLimit > 0 {
+		h.cfg.DailyLimit = startReq.DailyLimit
+		log.Printf("[Campaign] Daily limit set to %d from frontend", startReq.DailyLimit)
+	} else if h.cfg.DailyLimit <= 0 {
+		h.cfg.DailyLimit = 1800
+		log.Printf("[Campaign] Defaulting daily limit to %d (warm-up)", h.cfg.DailyLimit)
+	}
+
+	// Get QUEUED invoices ordered by Capa 3 Wave Priority (Wave 1: verified first, Wave 2: untested second)
+	invoices, err := h.db.GetPendingCampaignInvoicesWaveOrdered(campaignID)
 	if err != nil || len(invoices) == 0 {
 		http.Error(w, `{"error":"No hay facturas pendientes para enviar"}`, http.StatusBadRequest)
 		return
@@ -246,10 +278,11 @@ func (h *CampaignHandler) Start(w http.ResponseWriter, r *http.Request) {
 
 	// Parse template
 	var template *models.EmailTemplate
-	if campaign.TemplateSubject != "" || campaign.TemplateBody != "" {
+	if campaign.TemplateSubject != "" || campaign.TemplateBody != "" || startReq.ApologyText != "" {
 		template = &models.EmailTemplate{
-			Subject:  campaign.TemplateSubject,
-			BodyText: campaign.TemplateBody,
+			Subject:     campaign.TemplateSubject,
+			BodyText:    campaign.TemplateBody,
+			ApologyText: startReq.ApologyText,
 		}
 	}
 
@@ -315,11 +348,37 @@ func (h *CampaignHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// dispatchToWorkerPool sends QUEUED campaign invoices to the existing worker pool.
+// dispatchToWorkerPool sends QUEUED campaign invoices to the existing worker pool,
+// respecting the daily warm-up quota so remaining invoices stay QUEUED in SQLite for the next day.
 func (h *CampaignHandler) dispatchToWorkerPool(campaignID, jobID string, campaignInvoices []models.CampaignInvoice, dueDate string, template *models.EmailTemplate) {
-	var queued int
+	sentToday, savedLimit, _ := h.db.GetDailySendCount()
+	effectiveLimit := h.cfg.DailyLimit
+	if effectiveLimit <= 0 {
+		if savedLimit > 0 {
+			effectiveLimit = savedLimit
+			h.cfg.DailyLimit = savedLimit
+		} else {
+			effectiveLimit = 1800
+			h.cfg.DailyLimit = 1800
+		}
+	}
 
-	for _, ci := range campaignInvoices {
+	remainingToday := effectiveLimit - sentToday
+	if remainingToday <= 0 {
+		log.Printf("[Campaign] Daily quota already reached today (%d/%d). Campaign %s stays IN_PROGRESS for tomorrow's schedule.", sentToday, effectiveLimit, campaignID)
+		_ = h.db.UpdateCampaignStatus(campaignID, models.CampaignStatusInProgress)
+		_ = h.db.UpdateJobStatus(jobID, models.JobStatusCompleted)
+		return
+	}
+
+	batch := campaignInvoices
+	if len(batch) > remainingToday {
+		batch = batch[:remainingToday]
+	}
+	_ = h.db.UpdateJobTotalFiles(jobID, len(batch))
+
+	var queued int
+	for _, ci := range batch {
 		// Create the invoice record in the existing invoices table (for worker compatibility)
 		invoiceID := uuid.New().String()
 		invoice := &models.Invoice{
@@ -345,31 +404,55 @@ func (h *CampaignHandler) dispatchToWorkerPool(campaignID, jobID string, campaig
 		queued++
 	}
 
-	log.Printf("[Campaign] Dispatched %d invoices from campaign %s to job %s", queued, campaignID, jobID)
+	log.Printf("[Campaign] Dispatched %d/%d wave-ordered invoices from campaign %s to job %s (daily limit: %d)",
+		queued, len(campaignInvoices), campaignID, jobID, effectiveLimit)
 
-	// Wait for the worker pool to finish and update statuses
+	// Wait for the worker pool to finish today's batch and update statuses
 	go func() {
 		h.pool.WaitForCompletion()
 		_ = h.db.UpdateJobStatus(jobID, models.JobStatusCompleted)
+
+		stillPending, _ := h.db.GetPendingCampaignInvoicesWaveOrdered(campaignID)
+		if len(stillPending) > 0 {
+			_ = h.db.UpdateCampaignStatus(campaignID, models.CampaignStatusInProgress)
+			log.Printf("[Campaign] Daily batch finished for campaign %s. %d invoices remain QUEUED for next warm-up window.", campaignID, len(stillPending))
+			return
+		}
+
 		_ = h.db.UpdateCampaignStatus(campaignID, models.CampaignStatusCompleted)
 		log.Printf("[Campaign] Campaign %s completed (job %s)", campaignID, jobID)
+
+		// Enviar reporte final
+		reportHTML := fmt.Sprintf(`
+			<h2>Reporte de Envío de Campaña</h2>
+			<p>La campaña <strong>%s</strong> ha finalizado.</p>
+			<p>Revisar panel web para ver métricas finales.</p>
+		`, campaignID)
+		if h.email != nil {
+			err := h.email.SendSystemEmail(context.Background(), "admin@videodigital.com.ar", "Campaña Finalizada", reportHTML)
+			if err != nil {
+				log.Printf("[Campaign] Error sending report email: %v", err)
+			} else {
+				log.Printf("[Campaign] Report email sent to admin.")
+			}
+		}
 	}()
 }
 
 // ParseTXTFile is a helper used by the TXT file parsing route.
 var ParseTXTFile = parser.ParseTXTFile
 
-// ResumeActiveCampaign checks for an interrupted campaign and resumes sending QUEUED invoices.
+// ResumeActiveCampaign checks for an interrupted or daily-paused campaign and resumes sending QUEUED invoices in wave order.
 func (h *CampaignHandler) ResumeActiveCampaign() {
 	c, err := h.db.GetActiveCampaign()
 	if err != nil || c == nil {
 		return
 	}
-	if c.Status != models.CampaignStatusInProgress {
+	if c.Status != models.CampaignStatusInProgress && c.Status != models.CampaignStatusSending && c.Status != models.CampaignStatusPaused {
 		return
 	}
 
-	pending, err := h.db.GetPendingCampaignInvoices(c.ID)
+	pending, err := h.db.GetPendingCampaignInvoicesWaveOrdered(c.ID)
 	if err != nil {
 		log.Printf("[Recovery] Failed to fetch pending invoices for campaign %s: %v", c.ID, err)
 		return
@@ -381,24 +464,177 @@ func (h *CampaignHandler) ResumeActiveCampaign() {
 		return
 	}
 
-	log.Printf("[Recovery] Found interrupted campaign %s ('%s') with %d pending invoices. Resuming...", c.ID, c.Name, len(pending))
+	log.Printf("[Recovery] Found active campaign %s ('%s') with %d pending wave-ordered invoices. Resuming...", c.ID, c.Name, len(pending))
 
 	jobID := uuid.New().String()
 	job := &models.Job{
-		ID:        jobID,
-		Status:    models.JobStatusInProgress,
-		StartedAt: time.Now(),
+		ID:         jobID,
+		Filename:   fmt.Sprintf("campaign-%s", c.ID[:8]),
+		TotalFiles: len(pending),
+		Status:     models.JobStatusProcessing,
+		CreatedAt:  time.Now(),
 	}
 	_ = h.db.CreateJob(job)
+	_ = h.db.UpdateCampaignStatus(c.ID, models.CampaignStatusSending)
+	h.pool.SetCurrentJobID(jobID)
 
 	var tmpl *models.EmailTemplate
-	if c.TemplateSubject != "" {
+	if c.TemplateSubject != "" || c.TemplateBody != "" {
 		tmpl = &models.EmailTemplate{
 			Subject:  c.TemplateSubject,
 			BodyText: c.TemplateBody,
 		}
 	}
 
-	h.dispatchToWorkerPool(c.ID, jobID, pending, c.DueDate, tmpl)
+	go h.dispatchToWorkerPool(c.ID, jobID, pending, c.DueDate, tmpl)
+}
+
+// DispatchDaily handles POST /api/campaigns/dispatch-daily.
+// Fetches the next batch of QUEUED invoices from D1, downloads their PDFs from R2,
+// and submits them to the worker pool for today's sending window.
+func (h *CampaignHandler) DispatchDaily(w http.ResponseWriter, r *http.Request) {
+	cfSync := storage.NewCloudflareSync(h.cfg.CFWorkerURL)
+	activeData, err := cfSync.GetActiveCampaignFromD1()
+	if err != nil || activeData == nil || activeData["active"] != true {
+		http.Error(w, `{"error":"No hay ninguna campaña activa en Cloudflare D1."}`, http.StatusBadRequest)
+		return
+	}
+
+	campaignInfo, _ := activeData["campaign"].(map[string]interface{})
+	todayInfo, _ := activeData["today"].(map[string]interface{})
+	campaignID, _ := campaignInfo["id"].(string)
+
+	remainingQuota := 200
+	if rq, ok := todayInfo["remaining_quota"].(float64); ok {
+		remainingQuota = int(rq)
+	}
+	dailyLimit := remainingQuota
+	if dl, ok := todayInfo["daily_limit"].(float64); ok && int(dl) > 0 {
+		dailyLimit = int(dl)
+	}
+
+	if remainingQuota <= 0 {
+		http.Error(w, `{"error":"El cupo de envíos de hoy ya fue alcanzado. Se restablece a las 00:00 UTC."}`, http.StatusBadRequest)
+		return
+	}
+
+	// Ensure worker pool daily limit is hydrated from D1 after cold container restarts
+	if dailyLimit > h.cfg.DailyLimit {
+		h.cfg.DailyLimit = dailyLimit
+	}
+
+	// Parse requested limit from body if present
+	var req struct {
+		Limit int `json:"limit"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	batchSize := remainingQuota
+	if req.Limit > 0 && req.Limit < batchSize {
+		batchSize = req.Limit
+	}
+
+	// Fetch next QUEUED invoices from D1
+	invoices, err := cfSync.GetNextQueuedBatchFromD1(campaignID, batchSize)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Error al consultar D1: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	if len(invoices) == 0 {
+		http.Error(w, `{"error":"No hay más facturas en cola para esta campaña. ¡Campaña completada!"}`, http.StatusOK)
+		return
+	}
+
+	jobID := uuid.New().String()
+	job := &models.Job{
+		ID:         jobID,
+		Filename:   fmt.Sprintf("lote-diario-%s", campaignID),
+		TotalFiles: len(invoices),
+		Status:     models.JobStatusProcessing,
+		CreatedAt:  time.Now(),
+	}
+	_ = h.db.CreateJob(job)
+	h.pool.SetCurrentJobID(jobID)
+
+	// Download PDFs from R2 and submit to pool asynchronously so large daily batches never hit HTTP timeouts
+	go func(batch []map[string]interface{}, jobID, cID string) {
+		submitted := 0
+		for _, inv := range batch {
+			invNum, _ := inv["invoice_number"].(string)
+			email, _ := inv["recipient_email"].(string)
+			clientName, _ := inv["client_name"].(string)
+			dueDate, _ := inv["due_date"].(string)
+
+			pdfPath := filepath.Join(h.cfg.TempDir, jobID, fmt.Sprintf("%s.pdf", invNum))
+			if err := cfSync.DownloadPDFFromR2(cID, invNum, pdfPath); err != nil {
+				log.Printf("[DispatchDaily] Failed to download PDF for invoice %s from R2: %v", invNum, err)
+				continue
+			}
+
+			invoiceID := uuid.New().String()
+			invModel := models.Invoice{
+				ID:             invoiceID,
+				JobID:          jobID,
+				InvoiceNumber:  invNum,
+				RecipientEmail: email,
+				Status:         models.InvoiceStatusPending,
+			}
+			_ = h.db.CreateInvoice(&invModel)
+
+			h.pool.Submit(models.InvoiceJob{
+				Invoice:    invModel,
+				PDFPath:    pdfPath,
+				JobID:      jobID,
+				ClientName: clientName,
+				DueDate:    dueDate,
+			})
+			submitted++
+		}
+
+		if submitted == 0 {
+			_ = h.db.UpdateJobStatus(jobID, models.JobStatusFailed)
+			log.Printf("[DispatchDaily] Job %s failed: no PDFs could be downloaded from R2", jobID)
+			return
+		}
+
+		h.pool.WaitForCompletion()
+		_ = h.db.UpdateJobStatus(jobID, models.JobStatusCompleted)
+
+		// Mark ONLY actually succeeded invoices as ACCEPTED in D1
+		var succeededIDs []string
+		rows, err := h.db.RawConn().Query(
+			"SELECT invoice_number FROM invoices WHERE job_id = ? AND status = ?",
+			jobID, models.InvoiceStatusSuccess,
+		)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var invNum string
+				if err := rows.Scan(&invNum); err == nil {
+					succeededIDs = append(succeededIDs, fmt.Sprintf("%s_%s", cID, invNum))
+				}
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("[DispatchDaily] Row iteration error for job %s: %v", jobID, err)
+			}
+		}
+
+		if len(succeededIDs) > 0 {
+			if err := cfSync.MarkBatchSentInD1(cID, succeededIDs); err != nil {
+				log.Printf("[DispatchDaily] Failed to mark batch sent in D1 for campaign %s: %v", cID, err)
+			}
+		}
+		_ = os.RemoveAll(filepath.Join(h.cfg.TempDir, jobID))
+		log.Printf("[DispatchDaily] Completed dispatch of %d/%d invoices for campaign %s (job %s)", len(succeededIDs), submitted, cID, jobID)
+	}(invoices, jobID, campaignID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"job_id":      jobID,
+		"campaign_id": campaignID,
+		"dispatched":  len(invoices),
+		"message":     fmt.Sprintf("Lote diario de %d facturas iniciado en segundo plano.", len(invoices)),
+	})
 }
 

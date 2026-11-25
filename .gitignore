@@ -36,6 +36,26 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# ---------- Node & Cloudflare Worker ----------
+node_modules/
+.wrangler/
+dist/
+.vite/
+
+# ---------- Databases ----------
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# ---------- Customer Invoices, Warmup Data & Local Tests ----------
+archivos para calentar servidores/
+pruebas_facturas/
+emails/
+*.csv
+
 # ---------- OS Files ----------
 .DS_Store
 Thumbs.db

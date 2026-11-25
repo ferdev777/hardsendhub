@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +19,7 @@ import (
 	"hardsend/database"
 	"hardsend/email"
 	"hardsend/handlers"
+	"hardsend/reputation"
 	"hardsend/websocket"
 	"hardsend/workers"
 )
@@ -31,6 +34,9 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
+	// Ensure pre-seeded reputation DB is restored on cold container start if target DB does not exist yet
+	ensureSeedDatabase(cfg.DBPath, "/app/seed/hardsend_metrics.db")
+
 	// Initialize database
 	db, err := database.New(cfg.DBPath)
 	if err != nil {
@@ -43,13 +49,36 @@ func main() {
 		log.Fatalf("Failed to create temp directory: %v", err)
 	}
 
-	// Initialize Resend email client
-	emailClient, err := email.NewClient(cfg.ResendAPIKey, cfg.ResendFrom, cfg.ResendRateLimit)
-	if err != nil {
-		log.Printf("[WARNING] Failed to initialize email client: %v", err)
-		log.Println("[WARNING] Email sending will fail. Ensure RESEND_API_KEY is configured.")
-		// Continue running - the worker pool will handle errors via circuit breaker
-		emailClient = nil
+	// Initialize reputation store and MX cache (Capa 1 y Capa 2, Step 3)
+	repStore := reputation.New(db.RawConn())
+	mxCache := reputation.NewMXCache(5 * time.Second)
+
+	// Initialize Email Client (Cloudflare direct REST API / Worker Proxy or Resend fallback)
+	var emailClient email.EmailProvider
+	var errEmail error
+
+	if (cfg.CFAccountID != "" && cfg.CFAPIToken != "") || cfg.CFWorkerURL != "" {
+		emailClient, errEmail = email.NewCloudflareClient(
+			cfg.CFAccountID,
+			cfg.CFAPIToken,
+			cfg.CFWorkerURL,
+			cfg.CFWorkerToken,
+			cfg.CFFromAddress,
+			cfg.CFRateLimit,
+		)
+		if errEmail != nil {
+			log.Printf("[WARNING] Failed to init Cloudflare client: %v", errEmail)
+		}
+	} else {
+		// Fallback to Resend
+		emailClient, errEmail = email.NewClient(cfg.ResendAPIKey, cfg.ResendFrom, cfg.ResendRateLimit)
+		if errEmail != nil {
+			log.Printf("[WARNING] Failed to init Resend client: %v", errEmail)
+		}
+	}
+
+	if emailClient == nil {
+		log.Println("[WARNING] Email sending will fail. Ensure Cloudflare or Resend is configured.")
 	}
 
 	// Initialize WebSocket hub
@@ -66,14 +95,14 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(cfg)
-	uploadHandler := handlers.NewUploadHandler(db, pool, cfg, cfg.TempDir)
+	uploadHandler := handlers.NewUploadHandler(db, pool, cfg, repStore, cfg.TempDir)
 	jobsHandler := handlers.NewJobsHandler(db)
 	missingEmailsHandler := handlers.NewMissingEmailsHandler(db)
-	campaignHandler := handlers.NewCampaignHandler(db, pool, cfg)
+	campaignHandler := handlers.NewCampaignHandler(db, pool, cfg, repStore, mxCache, emailClient)
 	historyHandler := handlers.NewHistoryHandler(db)
 	filesystemHandler := handlers.NewFilesystemHandler()
-	webhookHandler := handlers.NewWebhookHandler(db, cfg.SvixSecret)
-	analyticsHandler := handlers.NewAnalyticsHandler(db)
+	webhookHandler := handlers.NewWebhookHandler(db, repStore, cfg.SvixSecret)
+	analyticsHandler := handlers.NewAnalyticsHandler(db, cfg)
 
 	// Start automatic recovery for interrupted campaigns
 	go campaignHandler.ResumeActiveCampaign()
@@ -101,7 +130,9 @@ func main() {
 
 	// Public routes
 	r.Post("/api/login", authHandler.Login)
+	r.Post("/api/auth/google", authHandler.GoogleLogin)
 	r.Post("/api/webhooks/resend", webhookHandler.HandleResendWebhook)
+	r.Post("/api/webhooks/cloudflare", webhookHandler.HandleCloudflareWebhook)
 
 	// WebSocket route (auth via query param)
 	r.Get("/ws/metrics", hub.HandleWebSocket)
@@ -112,6 +143,7 @@ func main() {
 
 		r.Get("/api/validate", authHandler.ValidateToken)
 		r.Post("/api/upload", uploadHandler.Upload)
+		r.Post("/api/upload/chunk", uploadHandler.StreamChunk)
 		r.Get("/api/jobs", jobsHandler.GetRecentJobs)
 		r.Get("/api/jobs/{jobID}/errors", jobsHandler.GetJobErrors)
 		r.Get("/api/jobs/{jobID}/metrics", jobsHandler.GetJobMetrics)
@@ -128,6 +160,7 @@ func main() {
 		r.Post("/api/campaigns/{id}/rescan", campaignHandler.Rescan)
 		r.Post("/api/campaigns/{id}/start", campaignHandler.Start)
 		r.Post("/api/campaigns/{id}/cancel", campaignHandler.Cancel)
+		r.Post("/api/campaigns/dispatch-daily", campaignHandler.DispatchDaily)
 
 		// Analytics dashboard endpoints
 		r.Get("/api/analytics/summary", analyticsHandler.GetSummary)
@@ -163,14 +196,37 @@ func main() {
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           r,
-		ReadTimeout:       5 * time.Minute,
+		ReadTimeout:       30 * time.Minute,
 		ReadHeaderTimeout: 30 * time.Second,
-		WriteTimeout:      10 * time.Minute,
+		WriteTimeout:      30 * time.Minute,
 		IdleTimeout:       30 * time.Minute,
 		MaxHeaderBytes:    1 << 20, // 1MB max headers
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+func ensureSeedDatabase(targetDBPath, seedDBPath string) {
+	if _, err := os.Stat(targetDBPath); err == nil {
+		return // Target DB already exists
+	}
+	if _, err := os.Stat(seedDBPath); err != nil {
+		return // No seed DB available
+	}
+	_ = os.MkdirAll(filepath.Dir(targetDBPath), 0755)
+	in, err := os.Open(seedDBPath)
+	if err != nil {
+		return
+	}
+	defer in.Close()
+	out, err := os.Create(targetDBPath)
+	if err != nil {
+		return
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err == nil {
+		log.Printf("[Seed] Restored pre-seeded reputation database from %s to %s", seedDBPath, targetDBPath)
 	}
 }
 

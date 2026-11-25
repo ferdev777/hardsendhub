@@ -37,6 +37,11 @@ func New(dbPath string) (*DB, error) {
 	return db, nil
 }
 
+// RawConn returns the underlying sql.DB connection.
+func (db *DB) RawConn() *sql.DB {
+	return db.conn
+}
+
 // migrate runs the database schema creation.
 func (db *DB) migrate() error {
 	migrations := []string{
@@ -141,6 +146,11 @@ func (db *DB) migrate() error {
 			no_email_count INTEGER NOT NULL DEFAULT 0,
 			blacklisted_count INTEGER NOT NULL DEFAULT 0,
 			skipped_count INTEGER NOT NULL DEFAULT 0,
+			verified_count INTEGER NOT NULL DEFAULT 0,
+			untested_count INTEGER NOT NULL DEFAULT 0,
+			fixable_count INTEGER NOT NULL DEFAULT 0,
+			suppressed_count INTEGER NOT NULL DEFAULT 0,
+			pdf_error_count INTEGER NOT NULL DEFAULT 0,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -197,6 +207,44 @@ func (db *DB) migrate() error {
 				continue
 			}
 			return fmt.Errorf("campaign_invoices alteration failed: %s: %w", m, err)
+		}
+	}
+
+	campaignAlterations := []string{
+		"ALTER TABLE campaigns ADD COLUMN verified_count INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaigns ADD COLUMN untested_count INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaigns ADD COLUMN fixable_count INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaigns ADD COLUMN suppressed_count INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE campaigns ADD COLUMN pdf_error_count INTEGER NOT NULL DEFAULT 0",
+	}
+	for _, m := range campaignAlterations {
+		_, err := db.conn.Exec(m)
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("campaign alteration failed: %s: %w", m, err)
+		}
+	}
+
+	// email_reputation table: Capa 1 — Anti-Bounce Engine (local reputation store)
+	_, err = db.conn.Exec(`CREATE TABLE IF NOT EXISTS email_reputation (
+		email        TEXT PRIMARY KEY,
+		status       TEXT NOT NULL DEFAULT 'untested',
+		bounce_reason TEXT,
+		updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		return fmt.Errorf("email_reputation migration failed: %w", err)
+	}
+
+	// Idempotency: prevent double-send if file is re-uploaded mid-campaign
+	_, err = db.conn.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_campaign_invoices_idempotency
+		ON campaign_invoices(campaign_id, invoice_number)`)
+	if err != nil {
+		// Ignore if index already exists (SQLite error contains "already exists")
+		if !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("idempotency index migration failed: %w", err)
 		}
 	}
 

@@ -148,6 +148,19 @@ func (c *ClientDB) Size() int {
 	return len(c.entries)
 }
 
+// AllEmails returns a slice of all unique emails in the database.
+func (c *ClientDB) AllEmails() []string {
+	seen := make(map[string]bool)
+	var emails []string
+	for _, email := range c.entries {
+		if !seen[email] {
+			seen[email] = true
+			emails = append(emails, email)
+		}
+	}
+	return emails
+}
+
 // ExtractInvoiceNumber extracts and normalizes the invoice number from a PDF filename.
 // Fully fault-proof against extra padding zeroes or shifted digit lengths.
 func ExtractInvoiceNumber(filename string) (string, error) {

@@ -1,0 +1,62 @@
+name = "hardsend"
+main = "src/index.ts"
+compatibility_date = "2026-10-25"
+upload_source_maps = true
+account_id = "974a2eb57b6467c57ede7c991e7b6f81"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+# Container Configuration
+[[containers]]
+class_name = "HardSendContainer"
+image = "registry.cloudflare.com/974a2eb57b6467c57ede7c991e7b6f81/hardsend:v1.1.4"
+max_instances = 1
+instance_type = "basic"
+
+# Durable Object Binding for the Container
+[[durable_objects.bindings]]
+class_name = "HardSendContainer"
+name = "HARDSEND_CONTAINER"
+
+[exports.HardSendContainer]
+type = "durable-object"
+storage = "sqlite"
+
+# Cloudflare Email Service binding
+[[send_email]]
+name = "EMAIL"
+
+# D1 Database Binding (Persistent State & Monthly Audit Ledger)
+[[d1_databases]]
+binding = "DB"
+database_name = "hardsend_suppression"
+database_id = "9e247c87-e18d-4c82-8f2e-14b71d49c5d3"
+
+# R2 Bucket Binding (Persistent Monthly Invoices Storage)
+[[r2_buckets]]
+binding = "INVOICES_BUCKET"
+bucket_name = "hardsend-invoices"
+
+# Cloudflare Queues Event Consumer (Lifecycle events from Email Sending)
+[[queues.consumers]]
+queue = "email-sending-events"
+max_batch_size = 10
+max_retries = 3
+
+# Variables de entorno (secrets CF_API_TOKEN, ADMIN_PASSWORD y JWT_SECRET se configuran vía Cloudflare Secrets)
+[vars]
+PORT = "8080"
+WORKER_COUNT = "2"
+CF_ACCOUNT_ID = "974a2eb57b6467c57ede7c991e7b6f81"
+CF_FROM_ADDRESS = "facturas@facturasvideodigital.com"
+CF_RATE_LIMIT = "15"
+ADMIN_USERNAME = "hardsendvideodigital"
+CF_WORKER_URL = "https://app.facturasvideodigital.com"

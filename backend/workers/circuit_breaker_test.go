@@ -78,3 +78,50 @@ func TestCircuitBreaker_TransitionToHalfOpen(t *testing.T) {
 		t.Errorf("Should be CLOSED after success in half-open, got %s", cb.GetState())
 	}
 }
+
+func TestBounceRateMonitor_EarlyTrigger(t *testing.T) {
+	alertTriggered := false
+	monitor := NewBounceRateMonitor(func(bounceRate float64, windowBounced, windowSent int) {
+		alertTriggered = true
+	})
+
+	for i := 0; i < 25; i++ {
+		monitor.RecordSent()
+		monitor.RecordHardBounce()
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	if !alertTriggered {
+		t.Error("Expected early trigger after 25 bounces, but didn't fire")
+	}
+
+	if !monitor.IsAlerted() {
+		t.Error("Expected IsAlerted() to be true")
+	}
+}
+
+func TestBounceRateMonitor_NoTrigger(t *testing.T) {
+	alertTriggered := false
+	monitor := NewBounceRateMonitor(func(bounceRate float64, windowBounced, windowSent int) {
+		alertTriggered = true
+	})
+
+	for i := 0; i < 1000; i++ {
+		monitor.RecordSent()
+		if i < 10 {
+			monitor.RecordHardBounce()
+		}
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	if alertTriggered {
+		t.Error("Expected no trigger for 1.0% bounce rate")
+	}
+
+	_, _, _, _, rate := monitor.GetStats()
+	if rate != 1.0 { // 10/1000 = 0.01 * 100 = 1.0
+		t.Errorf("Expected rate 1.0, got %f", rate)
+	}
+}

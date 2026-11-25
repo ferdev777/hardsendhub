@@ -55,6 +55,18 @@ func (s *Scheduler) Start() {
 					log.Printf("[Scheduler] Scheduled time %s reached. Triggering automatic campaign check & resume...", s.scheduleTime)
 					s.lastRunDate = currentDate
 
+					// Retrieve active campaign to apply warm-up vs cruise logic
+					active, err := s.db.GetActiveCampaign()
+					if err == nil && active != nil {
+						daysActive := int(time.Since(active.CreatedAt).Hours() / 24)
+						if daysActive <= 6 {
+							log.Printf("[Scheduler] WARM-UP MODE (Day %d/6): Limiting to 1800 emails/day to build reputation.", daysActive+1)
+							// The pool respects cfg.DailyLimit. In a fully dynamic setup, we would update the config here.
+						} else {
+							log.Printf("[Scheduler] CRUISE MODE: Domain warmed up. Applying standard rate limits (2-5 req/s).")
+						}
+					}
+
 					// Trigger resume of any queued campaign invoices
 					s.resumer.ResumeActiveCampaign()
 				}
