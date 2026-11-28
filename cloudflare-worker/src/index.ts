@@ -52,13 +52,60 @@ export default {
 		try {
 			const url = new URL(request.url);
 
-			// Endpoint: Real-time Delivery & Bounce Logs from D1
+			// Endpoint: Real-time Delivery & Bounce Logs from D1 (with server-side search, filter & pagination)
 			if (url.pathname === "/api/logs" && request.method === "GET") {
 				if (env.DB) {
 					try {
+						const rawLimit = parseInt(url.searchParams.get("limit") || "100", 10);
+						const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 100;
+						const rawOffset = parseInt(url.searchParams.get("offset") || "0", 10);
+						const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+						const q = (url.searchParams.get("q") || "").trim();
+						const filterType = (url.searchParams.get("type") || "ALL").toUpperCase();
+						const paginated = url.searchParams.get("paginated") === "1";
+
+						const whereClauses: string[] = [];
+						const bindParams: any[] = [];
+
+						if (filterType === "DELIVERED") {
+							whereClauses.push("event_type IN ('delivered', 'accepted')");
+						} else if (filterType === "BOUNCED") {
+							whereClauses.push("event_type IN ('bounced', 'deferred')");
+						} else if (filterType === "COMPLAINED") {
+							whereClauses.push("event_type = 'complained'");
+						} else if (filterType === "FAILED") {
+							whereClauses.push("event_type IN ('failed', 'rejected')");
+						}
+
+						if (q.length > 0) {
+							const like = `%${q}%`;
+							whereClauses.push(
+								"(LOWER(COALESCE(recipient, '')) LIKE LOWER(?) OR LOWER(COALESCE(invoice_id, '')) LIKE LOWER(?) OR LOWER(COALESCE(message_id, '')) LIKE LOWER(?) OR LOWER(COALESCE(bounce_reason, '')) LIKE LOWER(?))"
+							);
+							bindParams.push(like, like, like, like);
+						}
+
+						const whereSQL = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
 						const { results } = await env.DB.prepare(
-							"SELECT * FROM delivery_events ORDER BY created_at DESC LIMIT 100"
-						).all();
+							`SELECT * FROM delivery_events ${whereSQL} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+						).bind(...bindParams, limit, offset).all();
+
+						if (paginated) {
+							const countRow: any = await env.DB.prepare(
+								`SELECT COUNT(*) as total FROM delivery_events ${whereSQL}`
+							).bind(...bindParams).first();
+
+							return new Response(JSON.stringify({
+								items: results || [],
+								total: countRow?.total || 0,
+								limit,
+								offset,
+							}), {
+								headers: { "Content-Type": "application/json" },
+							});
+						}
+
 						return new Response(JSON.stringify(results || []), {
 							headers: { "Content-Type": "application/json" },
 						});

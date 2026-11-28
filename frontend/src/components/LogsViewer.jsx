@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
     Activity,
     ArrowLeft,
@@ -7,36 +7,71 @@ import {
     AlertTriangle,
     Search,
     RefreshCw,
-    Download,
     Eye,
     ShieldAlert,
-    Clock,
-    Mail,
     FileText,
-    Server,
-    Filter
+    Filter,
+    ChevronLeft,
+    ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+
+const PAGE_SIZE = 50
+
+function parseUtcTimestamp(ts) {
+    if (!ts) return new Date()
+    if (typeof ts === 'string' && !ts.includes('T') && !ts.endsWith('Z')) {
+        return new Date(ts.replace(' ', 'T') + 'Z')
+    }
+    return new Date(ts)
+}
 
 function LogsViewer({ onBack }) {
     const { token } = useAuth()
     const [events, setEvents] = useState([])
+    const [total, setTotal] = useState(0)
+    const [page, setPage] = useState(1)
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
+    const [debouncedSearch, setDebouncedSearch] = useState('')
     const [filterType, setFilterType] = useState('ALL')
     const [selectedEvent, setSelectedEvent] = useState(null)
 
-    const fetchEvents = async () => {
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm.trim())
+            setPage(1)
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [searchTerm])
+
+    const fetchEvents = useCallback(async () => {
         setLoading(true)
         try {
-            const res = await fetch('/api/logs?limit=100', {
+            const offset = (page - 1) * PAGE_SIZE
+            const params = new URLSearchParams({
+                paginated: '1',
+                limit: String(PAGE_SIZE),
+                offset: String(offset),
+                type: filterType,
+            })
+            if (debouncedSearch) {
+                params.set('q', debouncedSearch)
+            }
+
+            const res = await fetch(`/api/logs?${params.toString()}`, {
                 headers: { Authorization: `Bearer ${token}` }
             })
             if (res.ok) {
                 const data = await res.json()
-                setEvents(data || [])
+                if (Array.isArray(data)) {
+                    setEvents(data)
+                    setTotal(data.length)
+                } else {
+                    setEvents(data.items || [])
+                    setTotal(data.total || 0)
+                }
             } else {
-                // Fallback to recent job errors if /api/logs is populating
                 const fallbackRes = await fetch('/api/errors', {
                     headers: { Authorization: `Bearer ${token}` }
                 })
@@ -53,6 +88,7 @@ function LogsViewer({ onBack }) {
                         created_at: err.created_at || new Date().toISOString()
                     }))
                     setEvents(mapped)
+                    setTotal(mapped.length)
                 }
             }
         } catch (err) {
@@ -60,26 +96,16 @@ function LogsViewer({ onBack }) {
         } finally {
             setLoading(false)
         }
-    }
+    }, [token, page, filterType, debouncedSearch])
 
     useEffect(() => {
         fetchEvents()
-    }, [token])
+    }, [fetchEvents])
 
-    const filteredEvents = events.filter(e => {
-        const matchesSearch = 
-            (e.recipient && e.recipient.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (e.invoice_id && e.invoice_id.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (e.message_id && e.message_id.toLowerCase().includes(searchTerm.toLowerCase()))
-        
-        if (!matchesSearch) return false
-        if (filterType === 'ALL') return true
-        if (filterType === 'DELIVERED') return e.event_type === 'delivered' || e.event_type === 'accepted'
-        if (filterType === 'BOUNCED') return e.event_type === 'bounced' || e.event_type === 'deferred'
-        if (filterType === 'COMPLAINED') return e.event_type === 'complained'
-        if (filterType === 'FAILED') return e.event_type === 'failed' || e.event_type === 'rejected'
-        return true
-    })
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+    const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+    const rangeEnd = Math.min(page * PAGE_SIZE, total)
+    const filteredEvents = events
 
     const getEventBadge = (type, bounceType) => {
         switch (type) {
@@ -155,7 +181,10 @@ function LogsViewer({ onBack }) {
                     {['ALL', 'DELIVERED', 'BOUNCED', 'COMPLAINED', 'FAILED'].map((type) => (
                         <button
                             key={type}
-                            onClick={() => setFilterType(type)}
+                            onClick={() => {
+                                setFilterType(type)
+                                setPage(1)
+                            }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                                 filterType === type 
                                     ? 'bg-hardsend-500 text-white shadow-lg shadow-hardsend-500/20' 
@@ -206,7 +235,7 @@ function LogsViewer({ onBack }) {
                                 filteredEvents.map((evt, idx) => (
                                     <tr key={evt.id || idx} className="hover:bg-surface-800/40 transition-colors">
                                         <td className="py-3 px-4 text-surface-400 whitespace-nowrap">
-                                            {new Date(evt.created_at).toLocaleString()}
+                                            {parseUtcTimestamp(evt.created_at).toLocaleString()}
                                         </td>
                                         <td className="py-3 px-4 text-white font-medium">
                                             {evt.recipient}
@@ -234,6 +263,36 @@ function LogsViewer({ onBack }) {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Pagination Bar */}
+                <div className="px-4 py-3 border-t border-surface-800/80 bg-surface-900/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <span className="text-surface-400 font-mono">
+                        {total > 0
+                            ? `Mostrando ${rangeStart.toLocaleString()}–${rangeEnd.toLocaleString()} de ${total.toLocaleString()} eventos`
+                            : '0 eventos'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={loading || page <= 1}
+                            className="px-3 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-surface-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
+                        >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                            Anterior
+                        </button>
+                        <span className="text-surface-300 font-mono px-2">
+                            Página {page} de {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={loading || page >= totalPages}
+                            className="px-3 py-1.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-surface-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
+                        >
+                            Siguiente
+                            <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -269,7 +328,7 @@ function LogsViewer({ onBack }) {
                             </div>
                             <div className="flex justify-between py-1.5 border-b border-surface-800">
                                 <span className="text-surface-400">Timestamp:</span>
-                                <span className="text-surface-300 font-mono">{new Date(selectedEvent.created_at).toISOString()}</span>
+                                <span className="text-surface-300 font-mono">{parseUtcTimestamp(selectedEvent.created_at).toISOString()}</span>
                             </div>
                             {selectedEvent.smtp_code && (
                                 <div className="flex justify-between py-1.5 border-b border-surface-800">
